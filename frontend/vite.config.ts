@@ -1,8 +1,8 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: "/seletor/",
+  base: "/",
   plugins: [react()],
   server: {
     host: "0.0.0.0",
@@ -11,12 +11,14 @@ export default defineConfig({
     allowedHosts: ["varzeaprime.com.br", "www.varzeaprime.com.br"],
     proxy: {
       "/api": {
-        target: "https://seletor-sistema-api:22012",
+        // 👇 MUDE AQUI: De 'https' para 'http'
+        target: "http://seletor-sistema-api:22012", 
         changeOrigin: true,
         secure: false,
       },
       "/uploads": {
-        target: "https://seletor-sistema-api:22012",
+        // 👇 MUDE AQUI TAMBÉM
+        target: "http://seletor-sistema-api:22012", 
         changeOrigin: true,
         secure: false,
       },

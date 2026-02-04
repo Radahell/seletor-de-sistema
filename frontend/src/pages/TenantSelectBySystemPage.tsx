@@ -5,9 +5,9 @@
  * ele escolhe qual instância/campeonato/quadra
  */
 
-import { useState, useEffect } from "react";
+import { AlertCircle, ArrowLeft, Loader2, Trophy } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Trophy, Loader2, AlertCircle } from "lucide-react";
 
 interface Tenant {
   id: number;
@@ -18,6 +18,14 @@ interface Tenant {
   welcomeMessage: string | null;
   maintenanceMode: boolean;
 }
+
+// Função auxiliar de URL
+const getApiUrl = (endpoint: string) => {
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return `/api${endpoint}`;
+  }
+  return `/seletor-api/api${endpoint}`;
+};
 
 export default function TenantSelectBySystemPage() {
   const navigate = useNavigate();
@@ -35,9 +43,13 @@ export default function TenantSelectBySystemPage() {
 
   const loadTenants = async () => {
     try {
-      // Buscar tenants daquele sistema específico
-      const response = await fetch(`/api/systems/${systemSlug}/tenants`);
-      if (!response.ok) throw new Error('Erro ao carregar');
+      const url = getApiUrl(`/systems/${systemSlug}/tenants`);
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+         const text = await response.text();
+         throw new Error(`Erro ${response.status}: ${text.substring(0, 50)}`);
+      }
       
       const data = await response.json();
       setTenants(data.tenants);
@@ -54,7 +66,9 @@ export default function TenantSelectBySystemPage() {
     setError(null);
 
     try {
-      const response = await fetch('/api/tenants/select', {
+      const url = getApiUrl('/tenants/select');
+      
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -70,13 +84,25 @@ export default function TenantSelectBySystemPage() {
 
       const data = await response.json();
       
-      // Salvar no localStorage
+      // 1. Salvar no localStorage (Contexto compartilhado)
       localStorage.setItem('tenant_slug', slug);
       localStorage.setItem('system_slug', systemSlug || '');
       localStorage.setItem('tenant_theme', JSON.stringify(data.tenant.branding));
       
-      // Redirecionar para login
-      navigate('/login');
+      // =================================================================
+      // 👇 CORREÇÃO CRÍTICA AQUI 👇
+      // =================================================================
+      
+      // Mapeia o slug do sistema para a rota do Nginx
+      // Ex: se systemSlug for 'jogador', vamos para /jogador/login
+      const targetPrefix = `/${systemSlug}`; 
+
+      // Usamos window.location.href para FORÇAR o navegador a recarregar
+      // Isso faz a requisição bater no Nginx, que redireciona para o container do Varzea
+      console.log(`Redirecionando para sistema externo: ${targetPrefix}/login`);
+      
+      window.location.href = `${targetPrefix}/login`;
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro desconhecido');
     } finally {
@@ -99,7 +125,6 @@ export default function TenantSelectBySystemPage() {
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 py-12 px-4">
       <div className="max-w-6xl mx-auto">
         
-        {/* BOTÃO VOLTAR */}
         <button
           onClick={() => navigate('/')}
           className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors mb-8 font-bold uppercase tracking-wider text-sm"
@@ -108,10 +133,9 @@ export default function TenantSelectBySystemPage() {
           Voltar aos Sistemas
         </button>
 
-        {/* HEADER */}
         <div className="text-center mb-12">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-red-600 to-red-700 mb-6 shadow-2xl">
-            <Trophy className="w-10 h-10 text-white" fill="white" />
+            <div className="text-5xl flex items-center justify-center h-full w-full">🏆</div>
           </div>
           
           <h1 className="text-4xl md:text-6xl font-black text-white uppercase italic tracking-tighter mb-4">
@@ -123,7 +147,6 @@ export default function TenantSelectBySystemPage() {
           </p>
         </div>
 
-        {/* ERROR */}
         {error && (
           <div className="max-w-2xl mx-auto mb-8 bg-red-900/20 border border-red-600/30 rounded-xl p-4 flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
@@ -131,7 +154,6 @@ export default function TenantSelectBySystemPage() {
           </div>
         )}
 
-        {/* GRID */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {tenants.map((tenant) => (
             <button
@@ -153,15 +175,12 @@ export default function TenantSelectBySystemPage() {
                   : undefined
               }}
             >
-              {/* Glow */}
               <div 
                 className="absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-500 blur-2xl"
                 style={{ backgroundColor: tenant.primaryColor }}
               />
 
-              {/* Content */}
               <div className="relative z-10">
-                {/* Logo */}
                 {tenant.logoUrl ? (
                   <div className="w-16 h-16 mb-6 rounded-xl overflow-hidden bg-zinc-800/50">
                     <img 
@@ -183,19 +202,16 @@ export default function TenantSelectBySystemPage() {
                   </div>
                 )}
 
-                {/* Nome */}
                 <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter mb-2">
                   {tenant.displayName}
                 </h3>
 
-                {/* Mensagem */}
                 {tenant.welcomeMessage && (
                   <p className="text-xs text-zinc-500 font-medium mb-4 line-clamp-2">
                     {tenant.welcomeMessage}
                   </p>
                 )}
 
-                {/* Status */}
                 {tenant.maintenanceMode ? (
                   <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">
                     🔧 Em manutenção
@@ -215,7 +231,6 @@ export default function TenantSelectBySystemPage() {
                 )}
               </div>
 
-              {/* Accent */}
               <div 
                 className="absolute bottom-0 left-0 right-0 h-1 opacity-0 group-hover:opacity-100 transition-opacity"
                 style={{ backgroundColor: tenant.primaryColor }}

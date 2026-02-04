@@ -1,6 +1,6 @@
+import { ArrowLeft, LogIn, ShieldCheck } from 'lucide-react';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogIn, ShieldCheck, ArrowLeft } from 'lucide-react';
 
 export default function LoginPage() {
   const navigate = useNavigate();

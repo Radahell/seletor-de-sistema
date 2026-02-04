@@ -11,9 +11,6 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Trophy, Building , Loader2, AlertCircle } from "lucide-react";
 
-
-
-
 interface System {
   id: number;
   slug: string;
@@ -28,7 +25,19 @@ interface System {
 const iconMap: Record<string, any> = {
   trophy: Trophy,
   building: Building,
+};
 
+// 👇 [CORREÇÃO: Função auxiliar de URL]
+// Garante que a requisição vá para o lugar certo tanto em DEV quanto em PROD
+const getApiUrl = (endpoint: string) => {
+  // Em desenvolvimento (localhost), usamos o proxy do Vite (/api)
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return `/api${endpoint}`;
+  }
+  
+  // Em produção (varzeaprime.com.br), precisamos do prefixo configurado no Nginx
+  // O backend espera receber "/api/systems", então a URL pública deve ser:
+  return `/seletor-api/api${endpoint}`;
 };
 
 export default function SystemSelectPage() {
@@ -43,12 +52,22 @@ export default function SystemSelectPage() {
 
   const loadSystems = async () => {
     try {
-      const response = await fetch('/api/systems');
-      if (!response.ok) throw new Error('Erro ao carregar sistemas');
+      // 👇 [CORREÇÃO: Uso da função de URL]
+      const url = getApiUrl('/systems');
+      console.log("Buscando sistemas em:", url); // Debug no console (F12)
+
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        // Tenta ler o erro como texto (caso seja HTML do Nginx ou erro do Flask)
+        const errorText = await response.text();
+        throw new Error(`Erro ${response.status}: ${errorText.substring(0, 100)}...`);
+      }
       
       const data = await response.json();
       setSystems(data);
     } catch (err) {
+      console.error("Erro no fetch:", err);
       setError(err instanceof Error ? err.message : 'Erro desconhecido');
     } finally {
       setLoading(false);
@@ -97,7 +116,10 @@ export default function SystemSelectPage() {
         {error && (
           <div className="max-w-2xl mx-auto mb-8 bg-red-900/20 border border-red-600/30 rounded-xl p-4 flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-            <p className="text-red-400 text-sm font-bold">{error}</p>
+            <div className="flex flex-col">
+              <p className="text-red-400 text-sm font-bold">Erro ao carregar:</p>
+              <p className="text-red-300 text-xs font-mono mt-1">{error}</p>
+            </div>
           </div>
         )}
 

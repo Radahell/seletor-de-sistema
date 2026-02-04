@@ -1,22 +1,93 @@
+from __future__ import annotations
+
 import os
-from typing import Any, Dict
+import re
+import traceback
+import datetime
+import jwt
+from functools import wraps
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import create_engine, text
+from app.security import hash_password
 
-from .db import fetch_all, fetch_one, safe_db_error
+from app.db import (
+    init_db,
+    execute_sql,
+    fetch_one,
+    fetch_all,
+    safe_db_error,
+    validate_slug,
+    build_db_name_from_slug,
+    create_physical_database,
+    drop_physical_database,
+    build_tenant_database_url,
+    apply_sql_template,
+    TEMPLATES_DIR,
+    TENANT_DB_HOST,
+)
 
+# ------------------------------------------------------------
+# Config
+# ------------------------------------------------------------
 load_dotenv()
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev')
+ENV = os.getenv("ENV", "dev")
+JWT_SECRET = os.getenv("JWT_SECRET") or ""
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET is required (env var).")
 
-# Em prod você pode restringir origem. Como o Nginx já injeta CORS,
-# isso aqui serve principalmente para DEV direto no :22002.
+app = Flask(__name__)
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
+
 CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=False)
 
+# ------------------------------------------------------------
+# STARTUP (MASTER DB do Seletor)
+# ------------------------------------------------------------
+try:
+    print("--> Iniciando verificação do banco MASTER (Seletor)...", flush=True)
+    init_db()
+    print("--> Banco MASTER verificado!", flush=True)
+except Exception as e:
+    print(f"🚨 ERRO AO INICIAR BANCO MASTER: {e}", flush=True)
 
+
+# ------------------------------------------------------------
+# Decorators
+# ------------------------------------------------------------
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+
+        if "Authorization" in request.headers:
+            raw = request.headers.get("Authorization", "")
+            parts = raw.split(" ")
+            token = parts[1] if len(parts) > 1 else parts[0]
+
+        if not token:
+            return jsonify({"error": "Token de autenticação ausente!"}), 401
+
+        try:
+            jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token expirado! Faça login novamente."}), 401
+        except Exception:
+            return jsonify({"error": "Token inválido!"}), 401
+
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+# ------------------------------------------------------------
+# DTO Helpers
+# ------------------------------------------------------------
 def _system_row_to_dto(row: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": int(row["id"]),
@@ -42,35 +113,37 @@ def _tenant_row_to_dto(row: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-@app.get('/health')
+# ------------------------------------------------------------
+# Public routes
+# ------------------------------------------------------------
+@app.get("/health")
 def health():
     return jsonify({"ok": True})
 
 
-@app.get('/api/systems')
+@app.get("/api/systems")
 def list_systems():
     try:
         rows = fetch_all(
             """
             SELECT id, slug, display_name, description, icon, color, base_route, is_active
             FROM systems
+            WHERE is_active = 1
             ORDER BY display_order ASC, id ASC
             """
         )
         return jsonify([_system_row_to_dto(r) for r in rows])
     except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
         return jsonify({"error": safe_db_error(e)}), 500
 
 
-@app.get('/api/systems/<system_slug>/tenants')
+@app.get("/api/systems/<system_slug>/tenants")
 def list_tenants_by_system(system_slug: str):
     try:
         sys_row = fetch_one(
-            """
-            SELECT id, display_name
-            FROM systems
-            WHERE slug = :slug AND is_active = TRUE
-            """,
+            "SELECT id, display_name FROM systems WHERE slug = :slug AND is_active = 1",
             {"slug": system_slug},
         )
         if not sys_row:
@@ -80,47 +153,44 @@ def list_tenants_by_system(system_slug: str):
             """
             SELECT id, slug, display_name, logo_url, primary_color, welcome_message, maintenance_mode
             FROM tenants
-            WHERE system_id = :sid AND is_active = TRUE
+            WHERE system_id = :sid AND is_active = 1
             ORDER BY id ASC
             """,
             {"sid": sys_row["id"]},
         )
 
-        return jsonify({
-            "systemName": sys_row.get("display_name") or system_slug,
-            "tenants": [_tenant_row_to_dto(t) for t in tenants],
-        })
+        return jsonify(
+            {
+                "systemName": sys_row.get("display_name") or system_slug,
+                "tenants": [_tenant_row_to_dto(t) for t in tenants],
+            }
+        )
     except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
         return jsonify({"error": safe_db_error(e)}), 500
 
 
-@app.post('/api/tenants/select')
+@app.post("/api/tenants/select")
 def select_tenant():
+    """
+    Apenas retorna os dados do tenant selecionado (para o frontend salvar).
+    O sistema de verdade (Varzea) vai usar X-Tenant-Slug e resolver o DB lá.
+    """
     try:
         payload = request.get_json(silent=True) or {}
-        tenant_slug = (payload.get('slug') or '').strip()
+        tenant_slug = (payload.get("slug") or "").strip()
         if not tenant_slug:
             return jsonify({"error": "slug é obrigatório"}), 400
 
-        header_system_slug = (request.headers.get('X-System-Slug') or '').strip()
+        header_system_slug = (request.headers.get("X-System-Slug") or "").strip()
 
-        # Busca tenant + sistema
         row = fetch_one(
             """
             SELECT 
-              t.id,
-              t.slug,
-              t.display_name,
-              t.database_name,
-              t.database_host,
-              t.primary_color,
-              t.secondary_color,
-              t.accent_color,
-              t.background_color,
-              t.maintenance_mode,
-              t.is_active,
-              s.slug as system_slug,
-              s.display_name as system_name
+              t.id, t.slug, t.display_name, t.database_name, t.database_host,
+              t.primary_color, t.maintenance_mode, t.is_active,
+              s.slug as system_slug, s.display_name as system_name
             FROM tenants t
             INNER JOIN systems s ON s.id = t.system_id
             WHERE t.slug = :tenant_slug
@@ -130,36 +200,305 @@ def select_tenant():
 
         if not row:
             return jsonify({"error": "Tenant não encontrado"}), 404
-
-        if not bool(row.get('is_active', True)):
+        if not bool(row.get("is_active", True)):
             return jsonify({"error": "Tenant inativo"}), 403
-
-        if bool(row.get('maintenance_mode', False)):
+        if bool(row.get("maintenance_mode", False)):
             return jsonify({"error": "Tenant em manutenção"}), 503
-
-        if header_system_slug and header_system_slug != row.get('system_slug'):
+        if header_system_slug and header_system_slug != row.get("system_slug"):
             return jsonify({"error": "Tenant não pertence a esse sistema"}), 400
 
         dto = {
             "id": int(row["id"]),
             "slug": row["slug"],
             "displayName": row.get("display_name") or "",
-            "system": {
-                "slug": row.get("system_slug"),
-                "displayName": row.get("system_name"),
-            },
+            "system": {"slug": row.get("system_slug"), "displayName": row.get("system_name")},
             "database": {
                 "name": row.get("database_name"),
-                "host": row.get("database_host") or "db",
+                "host": row.get("database_host") or TENANT_DB_HOST,
             },
             "branding": {
                 "primaryColor": row.get("primary_color") or "#ef4444",
-                "secondaryColor": row.get("secondary_color") or "#f59e0b",
-                "accentColor": row.get("accent_color") or "#3b82f6",
-                "backgroundColor": row.get("background_color") or "#09090b",
+                "secondaryColor": "#f59e0b",
+                "accentColor": "#3b82f6",
+                "backgroundColor": "#09090b",
             },
         }
-
         return jsonify({"tenant": dto})
     except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
         return jsonify({"error": safe_db_error(e)}), 500
+
+
+# ------------------------------------------------------------
+# Super Admin routes
+# ------------------------------------------------------------
+@app.post("/api/super-admin/login")
+def super_admin_login():
+    data = request.get_json(silent=True) or {}
+    if not data.get("email") or not data.get("password"):
+        return jsonify({"error": "Email e senha obrigatórios"}), 400
+
+    admin = fetch_one("SELECT * FROM super_admins WHERE email = :email", {"email": data["email"]})
+    if not admin:
+        return jsonify({"error": "Credenciais inválidas"}), 401
+
+    if check_password_hash(admin["password_hash"], data["password"]):
+        token = jwt.encode(
+            {
+                "user_id": admin["id"],
+                "email": admin["email"],
+                "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24),
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        return jsonify({"token": token, "name": admin.get("name") or "Admin", "message": "Login realizado"})
+    return jsonify({"error": "Credenciais inválidas"}), 401
+
+
+@app.post("/api/super-admin/create-tenant")
+@token_required
+
+def create_tenant():
+    """
+    Cria:
+    1) registro em tenants (MASTER DB do Seletor)
+    2) database físico no MySQL do Varzea (TENANT_DB_HOST)
+    3) aplica template SQL (backend/app/templates_sql/model_<systemSlug>.sql)
+    4) cria usuário admin no DB do tenant
+
+    Importante:
+    - Se qualquer etapa falhar, faz rollback compensatório (remove registro do MASTER e dropa o DB físico se já tiver sido criado).
+    """
+    data = request.get_json(silent=True) or {}
+
+    inserted_master = False
+    created_db = False
+    slug = None
+    db_name = None
+    target_host = None
+
+    try:
+        if not data.get("slug") or not data.get("systemSlug"):
+            return jsonify({"error": "Slug e systemSlug são obrigatórios"}), 400
+
+        slug = validate_slug(data["slug"])
+        system_slug = (data["systemSlug"] or "").strip().lower()
+
+        # Valida system
+        system = fetch_one("SELECT id FROM systems WHERE slug = :slug", {"slug": system_slug})
+        if not system:
+            return jsonify({"error": "Sistema inválido"}), 400
+
+        # Evita duplicidade de slug
+        exists = fetch_one("SELECT id FROM tenants WHERE slug = :slug", {"slug": slug})
+        if exists:
+            return jsonify({"error": "Este slug já está em uso."}), 409
+
+        # Nome físico do novo DB
+        db_name = build_db_name_from_slug(slug)
+
+        # Host destino onde o DB vai nascer (MySQL do Varzea)
+        target_host = os.getenv("TENANT_DB_HOST", TENANT_DB_HOST)
+
+        # 1) insere no MASTER do seletor
+        execute_sql(
+            """
+            INSERT INTO tenants (
+                system_id, slug, display_name, database_name, database_host,
+                primary_color, is_active, allow_registration
+            ) VALUES (
+                :system_id, :slug, :display_name, :db_name, :db_host,
+                :color, 1, 1
+            )
+            """,
+            {
+                "system_id": system["id"],
+                "slug": slug,
+                "display_name": data.get("displayName", slug),
+                "db_name": db_name,
+                "db_host": target_host,
+                "color": data.get("primaryColor", "#ef4444"),
+            },
+        )
+        inserted_master = True
+
+        # 2) cria DB físico no Varzea MySQL
+        print(f"--> Criando DB `{db_name}` em {target_host}...", flush=True)
+        create_physical_database(target_host, db_name)
+        created_db = True
+
+        # 3) conecta no DB do tenant e aplica template
+        tenant_url = build_tenant_database_url(target_host, db_name)
+        tenant_engine = create_engine(tenant_url, pool_pre_ping=True, future=True)
+
+        template_path = TEMPLATES_DIR / f"model_{system_slug}.sql"
+
+        with tenant_engine.begin() as conn:
+            if template_path.exists():
+                print(f"--> Aplicando template: {template_path}", flush=True)
+                apply_sql_template(conn, template_path)
+            else:
+                # fallback mínimo
+                print("--> Template não encontrado. Criando tabela genérica users.", flush=True)
+                conn.execute(
+                    text(
+                        """
+                        CREATE TABLE IF NOT EXISTS users (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            name VARCHAR(100),
+                            email VARCHAR(100) UNIQUE,
+                            password_hash VARCHAR(255),
+                            role VARCHAR(20) DEFAULT 'admin',
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                        """
+                    )
+                )
+
+            # 4) cria admin (compat Varzea: cria Player + User com player_id)
+            admin_email = data.get("adminEmail", f"admin@{slug}.com")
+            admin_pass = data.get("adminPassword", "123")
+            admin_name = data.get("adminName", "Super Admin")
+            admin_nickname = data.get("adminNickname", "Super Admin")
+
+            pass_hash = hash_password(admin_pass)
+
+            if system_slug == "jogador":
+                # 4.1) cria player (igual /auth/register do Varzea: Player.name = nickname)
+                res = conn.exec_driver_sql(
+                    "INSERT INTO players (name) VALUES (%s)",
+                    (admin_nickname,),
+                )
+                player_id = res.lastrowid
+
+                # 4.2) cria user apontando pro player
+                conn.exec_driver_sql(
+                    """
+                    INSERT INTO users (
+                        email, password_hash,
+                        is_admin, is_approved, is_blocked, is_monthly,
+                        player_id, name, nickname, phone, avatar_url
+                    )
+                    VALUES (
+                        %s, %s,
+                        1, 1, 0, 0,
+                        %s, %s, %s, NULL, NULL
+                    )
+                    """,
+                    (admin_email, pass_hash, player_id, admin_name, admin_nickname),
+                )
+            else:
+                # genérico (se existir outro sistema que não tenha players/users nesse formato)
+                conn.exec_driver_sql(
+                    """
+                    INSERT INTO users (name, email, password_hash, role)
+                    VALUES (%s, %s, %s, 'admin')
+                    """,
+                    (admin_name, admin_email, pass_hash),
+                )
+        return (
+            jsonify(
+                {
+                    "message": "Tenant criado com sucesso no Varzea DB!",
+                    "tenant": {"slug": slug, "database": db_name, "admin": admin_email, "host": target_host},
+                }
+            ),
+            201,
+        )
+
+    except Exception as e:
+        # rollback compensatório (sem depender de transação entre bancos)
+        if ENV == "dev":
+            traceback.print_exc()
+
+        # 1) drop DB físico se já foi criado
+        if created_db and target_host and db_name:
+            try:
+                print(f"!! ROLLBACK: drop database `{db_name}` em {target_host}", flush=True)
+                drop_physical_database(target_host, db_name)
+            except Exception as drop_err:
+                print(f"!! ROLLBACK falhou ao dropar DB `{db_name}`: {drop_err}", flush=True)
+
+        # 2) remove registro do MASTER se já inseriu
+        if inserted_master and slug:
+            try:
+                print(f"!! ROLLBACK: removendo tenant `{slug}` do MASTER", flush=True)
+                execute_sql("DELETE FROM tenants WHERE slug = :slug", {"slug": slug})
+            except Exception as del_err:
+                print(f"!! ROLLBACK falhou ao deletar tenant `{slug}` do MASTER: {del_err}", flush=True)
+
+        # resposta
+        if ENV == "dev":
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Erro ao criar tenant"}), 500
+
+
+@app.get("/api/super-admin/tenants")
+@token_required
+def list_all_tenants_admin():
+    try:
+        sql = """
+        SELECT t.id, t.slug, t.display_name, t.database_name, t.database_host, t.is_active,
+               s.display_name as system_name
+        FROM tenants t
+        JOIN systems s ON t.system_id = s.id
+        ORDER BY t.id DESC
+        """
+        rows = fetch_all(sql)
+
+        results = []
+        for r in rows:
+            results.append(
+                {
+                    "id": r["id"],
+                    "slug": r["slug"],
+                    "displayName": r["display_name"],
+                    "databaseName": r["database_name"],
+                    "databaseHost": r.get("database_host"),
+                    "systemName": r["system_name"],
+                    "isActive": bool(r["is_active"]),
+                }
+            )
+
+        return jsonify(results)
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+        return jsonify({"error": safe_db_error(e)}), 500
+
+
+@app.delete("/api/super-admin/tenants/<int:tenant_id>")
+@token_required
+def delete_tenant(tenant_id: int):
+    """
+    Remove:
+    1) DB físico no MySQL do Varzea (host do tenant)
+    2) registro do tenant no MASTER DB do Seletor
+    """
+    try:
+        tenant = fetch_one(
+            "SELECT id, database_name, database_host, display_name FROM tenants WHERE id = :id",
+            {"id": tenant_id},
+        )
+        if not tenant:
+            return jsonify({"error": "Tenant não encontrado"}), 404
+
+        db_name = tenant["database_name"]
+        db_host = tenant.get("database_host") or TENANT_DB_HOST
+
+        # 1) drop no host CERTO (MySQL do Varzea)
+        print(f"--> Drop database `{db_name}` em {db_host}...", flush=True)
+        drop_physical_database(db_host, db_name)
+
+        # 2) remove registro
+        execute_sql("DELETE FROM tenants WHERE id = :id", {"id": tenant_id})
+
+        return jsonify({"message": f"Sistema '{tenant.get('display_name')}' e banco foram excluídos."})
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Erro ao deletar tenant"}), 500

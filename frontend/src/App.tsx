@@ -4,6 +4,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import SystemSelectPage from './pages/SystemSelectPage';
 import TenantSelectBySystemPage from './pages/TenantSelectBySystemPage';
 import LoginPage from './pages/LoginPage';
+import { SuperAdmin } from './pages/SuperAdmin';
 
 type TenantTheme = {
   primaryColor?: string;
@@ -38,6 +39,7 @@ export default function App() {
       <Route path="/select-tenant/:systemSlug" element={<TenantSelectBySystemPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/super-admin" element={<SuperAdmin />} />
     </Routes>
   );
 }
