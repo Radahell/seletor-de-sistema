@@ -502,3 +502,13 @@ def delete_tenant(tenant_id: int):
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
         return jsonify({"error": "Erro ao deletar tenant"}), 500
+
+
+# ------------------------------------------------------------
+# Registrar Blueprints de Autenticação Centralizada
+# ------------------------------------------------------------
+from app.routes.auth_routes import auth_bp
+from app.routes.membership_routes import membership_bp
+
+app.register_blueprint(auth_bp)
+app.register_blueprint(membership_bp)

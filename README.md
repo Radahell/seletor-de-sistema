@@ -109,3 +109,8 @@ docker compose --profile dev up -d --build
   - subdomínio (`copa-aposentados.seudominio.com`) **ou**
   - header `X-Tenant-Slug`
   e então abrir engine/Session do DB correto.
+
+
+ docker exec -i seletor-sistema-db mysql -uroot -p'&DMforever13036619' seletor_db <             
+  migrations/001_centralized_users.sql                                                           
+                                         

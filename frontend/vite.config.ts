@@ -10,15 +10,22 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: ["varzeaprime.com.br", "www.varzeaprime.com.br"],
     proxy: {
-      "/api": {
-        // 👇 MUDE AQUI: De 'https' para 'http'
-        target: "http://seletor-sistema-api:22012", 
+      // Seletor API — mesmo path que o nginx usa em produção
+      "/seletor-api": {
+        target: "http://seletor-sistema-api:22012",
         changeOrigin: true,
         secure: false,
+        rewrite: (path) => path.replace(/^\/seletor-api/, ""),
+      },
+      // SCL API — mesmo path que o nginx usa em produção
+      "/scl-api": {
+        target: "http://scl:6000",
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/scl-api/, ""),
       },
       "/uploads": {
-        // 👇 MUDE AQUI TAMBÉM
-        target: "http://seletor-sistema-api:22012", 
+        target: "http://seletor-sistema-api:22012",
         changeOrigin: true,
         secure: false,
       },
