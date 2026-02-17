@@ -8,6 +8,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import ProtectedAdminRoute from './components/ProtectedAdminRoute';
 import AuthPage from './pages/AuthPage';
 import DashboardPage from './pages/DashboardPage';
+import SystemAreaPage from './pages/SystemAreaPage';
 import ProfilePage from './pages/ProfilePage';
 import DiscoverPage from './pages/DiscoverPage';
 import LancesPage from './pages/LancesPage';
@@ -24,10 +25,6 @@ const AdminSecurityPage = lazy(() => import('./pages/admin/AdminSecurityPage'));
 const AdminAuditPage = lazy(() => import('./pages/admin/AdminAuditPage'));
 const AdminTenantsPage = lazy(() => import('./pages/admin/AdminTenantsPage'));
 
-// Legacy routes
-import SystemSelectPage from './pages/SystemSelectPage';
-import TenantSelectBySystemPage from './pages/TenantSelectBySystemPage';
-import LoginPage from './pages/LoginPage';
 
 type TenantTheme = {
   primaryColor?: string;
@@ -77,6 +74,10 @@ export default function App() {
           path="/profile"
           element={<ProtectedRoute><ProfilePage /></ProtectedRoute>}
         />
+        <Route
+          path="/system/:slug"
+          element={<ProtectedRoute><SystemAreaPage /></ProtectedRoute>}
+        />
         <Route path="/discover/:slug" element={<DiscoverPage />} />
         <Route
           path="/lances"
@@ -105,11 +106,11 @@ export default function App() {
           <Route path="tenants" element={<Suspense fallback={<AdminFallback />}><AdminTenantsPage /></Suspense>} />
         </Route>
 
-        {/* Legacy routes */}
+        {/* Redirects */}
         <Route path="/" element={<Navigate to="/auth" replace />} />
-        <Route path="/legacy" element={<SystemSelectPage />} />
-        <Route path="/select-tenant/:systemSlug" element={<TenantSelectBySystemPage />} />
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/login" element={<Navigate to="/auth" replace />} />
+        <Route path="/legacy" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/select-tenant/:systemSlug" element={<Navigate to="/dashboard" replace />} />
         <Route path="/super-admin" element={<Navigate to="/admin/tenants" replace />} />
 
         {/* Catch-all */}

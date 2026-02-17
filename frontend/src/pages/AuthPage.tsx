@@ -136,14 +136,12 @@ export default function AuthPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-red-500/20">
-            <span className="text-3xl font-black text-white">LO</span>
-          </div>
-          <h1 className="text-2xl font-black text-white uppercase tracking-tight">
-            Lance de Ouro
+          <img src="/img/logo_vp.png" alt="Varzea Prime" className="w-20 h-20 mx-auto mb-4 rounded-2xl shadow-lg shadow-amber-500/20" />
+          <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter">
+            Varzea Prime
           </h1>
           <p className="text-zinc-500 text-sm mt-1">
-            Sistema Unificado
+            Plataforma Esportiva
           </p>
         </div>
 
@@ -155,7 +153,7 @@ export default function AuthPage() {
               onClick={() => setMode('login')}
               className={`flex-1 py-3 rounded-xl font-bold text-sm uppercase tracking-wider transition-all ${
                 mode === 'login'
-                  ? 'bg-red-500 text-white'
+                  ? 'bg-amber-500 text-zinc-900'
                   : 'bg-zinc-800 text-zinc-400 hover:text-white'
               }`}
             >
@@ -166,7 +164,7 @@ export default function AuthPage() {
               onClick={() => setMode('register')}
               className={`flex-1 py-3 rounded-xl font-bold text-sm uppercase tracking-wider transition-all ${
                 mode === 'register'
-                  ? 'bg-red-500 text-white'
+                  ? 'bg-amber-500 text-zinc-900'
                   : 'bg-zinc-800 text-zinc-400 hover:text-white'
               }`}
             >
@@ -199,7 +197,7 @@ export default function AuthPage() {
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Seu nome"
                       required
-                      className="w-full pl-12 pr-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-red-500 focus:outline-none transition-colors"
+                      className="w-full pl-12 pr-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none transition-colors"
                     />
                   </div>
                 </div>
@@ -215,7 +213,7 @@ export default function AuthPage() {
                       value={nickname}
                       onChange={(e) => setNickname(e.target.value)}
                       placeholder="Como quer ser chamado"
-                      className="w-full pl-12 pr-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-red-500 focus:outline-none transition-colors"
+                      className="w-full pl-12 pr-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none transition-colors"
                     />
                   </div>
                 </div>
@@ -231,7 +229,7 @@ export default function AuthPage() {
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="(00) 00000-0000"
-                      className="w-full pl-12 pr-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-red-500 focus:outline-none transition-colors"
+                      className="w-full pl-12 pr-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none transition-colors"
                     />
                   </div>
                 </div>
@@ -249,7 +247,7 @@ export default function AuthPage() {
                         onChange={(e) => handleCepChange(e.target.value)}
                         placeholder="CEP (auto-preenche)"
                         maxLength={9}
-                        className="w-full px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-red-500 focus:outline-none transition-colors"
+                        className="w-full px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none transition-colors"
                       />
                       {loadingCep && (
                         <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 animate-spin" />
@@ -260,7 +258,7 @@ export default function AuthPage() {
                       value={logradouro}
                       onChange={(e) => setLogradouro(e.target.value)}
                       placeholder="Logradouro"
-                      className="w-full px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-red-500 focus:outline-none transition-colors"
+                      className="w-full px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none transition-colors"
                     />
                     <div className="flex gap-3">
                       <input
@@ -268,14 +266,14 @@ export default function AuthPage() {
                         value={numero}
                         onChange={(e) => setNumero(e.target.value)}
                         placeholder="Nº"
-                        className="w-24 px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-red-500 focus:outline-none transition-colors"
+                        className="w-24 px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none transition-colors"
                       />
                       <input
                         type="text"
                         value={bairro}
                         onChange={(e) => setBairro(e.target.value)}
                         placeholder="Bairro"
-                        className="flex-1 px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-red-500 focus:outline-none transition-colors"
+                        className="flex-1 px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none transition-colors"
                       />
                     </div>
                     <input
@@ -283,13 +281,13 @@ export default function AuthPage() {
                       value={complemento}
                       onChange={(e) => setComplemento(e.target.value)}
                       placeholder="Complemento"
-                      className="w-full px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-red-500 focus:outline-none transition-colors"
+                      className="w-full px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none transition-colors"
                     />
                     <div className="flex gap-3">
                       <select
                         value={state}
                         onChange={(e) => setState(e.target.value)}
-                        className="w-24 px-3 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white focus:border-red-500 focus:outline-none transition-colors appearance-none cursor-pointer"
+                        className="w-24 px-3 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white focus:border-amber-500 focus:outline-none transition-colors appearance-none cursor-pointer"
                       >
                         <option value="">UF</option>
                         {ESTADOS.map((e) => (
@@ -301,7 +299,7 @@ export default function AuthPage() {
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
                         disabled={!state || loadingCidades}
-                        className="flex-1 px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white focus:border-red-500 focus:outline-none transition-colors disabled:opacity-40 appearance-none cursor-pointer"
+                        className="flex-1 px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white focus:border-amber-500 focus:outline-none transition-colors disabled:opacity-40 appearance-none cursor-pointer"
                       >
                         <option value="">
                           {loadingCidades ? 'Carregando...' : state ? 'Selecione a cidade' : 'Selecione o UF primeiro'}
@@ -327,7 +325,7 @@ export default function AuthPage() {
                           onClick={() => toggleInterest(sys.id)}
                           className={`px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-all border ${
                             selectedInterests.includes(sys.id)
-                              ? 'border-red-500 bg-red-500/10 text-white'
+                              ? 'border-amber-500 bg-amber-500/10 text-white'
                               : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600'
                           }`}
                         >
@@ -352,7 +350,7 @@ export default function AuthPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu@email.com"
                   required
-                  className="w-full pl-12 pr-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-red-500 focus:outline-none transition-colors"
+                  className="w-full pl-12 pr-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none transition-colors"
                 />
               </div>
             </div>
@@ -370,7 +368,7 @@ export default function AuthPage() {
                   placeholder={mode === 'register' ? 'Mínimo 6 caracteres' : '••••••••'}
                   required
                   minLength={mode === 'register' ? 6 : undefined}
-                  className="w-full pl-12 pr-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-red-500 focus:outline-none transition-colors"
+                  className="w-full pl-12 pr-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none transition-colors"
                 />
               </div>
             </div>
@@ -378,7 +376,7 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-4 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold uppercase tracking-wider flex items-center justify-center gap-2 hover:from-red-600 hover:to-orange-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-red-500/20"
+              className="w-full py-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-zinc-900 font-bold uppercase tracking-wider flex items-center justify-center gap-2 hover:from-amber-400 hover:to-amber-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-500/20"
             >
               {isLoading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -396,14 +394,14 @@ export default function AuthPage() {
             {mode === 'login' ? (
               <>
                 Não tem conta?{' '}
-                <button onClick={toggleMode} className="text-red-400 hover:text-red-300 font-bold">
+                <button onClick={toggleMode} className="text-amber-400 hover:text-amber-300 font-bold">
                   Criar agora
                 </button>
               </>
             ) : (
               <>
                 Já tem conta?{' '}
-                <button onClick={toggleMode} className="text-red-400 hover:text-red-300 font-bold">
+                <button onClick={toggleMode} className="text-amber-400 hover:text-amber-300 font-bold">
                   Fazer login
                 </button>
               </>

@@ -101,11 +101,11 @@ export default function AdminPlayersPage() {
         phone: editRow.phone,
         email: editRow.email,
       });
-      setSuccess('Jogador atualizado!');
+      setSuccess('Usuario atualizado!');
       setEditingId(null);
       loadList();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao atualizar jogador.');
+      setError(err instanceof Error ? err.message : 'Erro ao atualizar usuario.');
     } finally {
       setSavingEdit(false);
     }
@@ -151,15 +151,15 @@ export default function AdminPlayersPage() {
 
   // ── Delete ──
   const handleDelete = async (p: Player) => {
-    if (!confirm(`Remover jogador "${p.name}"? Esta acao nao pode ser desfeita.`)) return;
+    if (!confirm(`Remover usuario "${p.name}"? Esta acao nao pode ser desfeita.`)) return;
     setActionId(p.id);
     setError('');
     try {
       await deletePlayer(p.id);
-      setSuccess('Jogador removido.');
+      setSuccess('Usuario removido.');
       loadList();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao remover jogador.');
+      setError(err instanceof Error ? err.message : 'Erro ao remover usuario.');
     } finally {
       setActionId(null);
     }
@@ -180,8 +180,8 @@ export default function AdminPlayersPage() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Usuarios</h1>
-        <p className="text-sm text-zinc-400">Gerencie usuarios cadastrados na plataforma.</p>
+        <h1 className="text-2xl font-bold text-white">Usuarios da Plataforma</h1>
+        <p className="text-sm text-zinc-400">Gerencie usuarios cadastrados no Varzea Prime.</p>
       </div>
 
       {/* Filters */}
@@ -272,7 +272,7 @@ export default function AdminPlayersPage() {
         {loading ? (
           <p className="text-zinc-400 text-sm py-8 text-center">Carregando...</p>
         ) : !data || data.items.length === 0 ? (
-          <p className="text-zinc-500 text-sm py-8 text-center">Nenhum jogador encontrado.</p>
+          <p className="text-zinc-500 text-sm py-8 text-center">Nenhum usuario encontrado.</p>
         ) : (
           <>
             <div className="overflow-x-auto">

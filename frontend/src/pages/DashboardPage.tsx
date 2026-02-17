@@ -1,26 +1,34 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Trophy, Video, Building2, Flag, ChevronRight, Plus, LogOut, User,
-  Search, Loader2, RefreshCw, Shield
+  LogOut, User, Loader2, RefreshCw, Shield, ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import api, { SystemWithTenants, TenantInfo, ApiError } from '../services/api';
-import SwitchSystemMenu from '../components/SwitchSystemMenu';
+import api, { SystemInfo, SystemWithTenants } from '../services/api';
 
-const SYSTEM_ICONS: Record<string, typeof Trophy> = {
-  jogador: Trophy,
-  lances: Video,
-  quadra: Building2,
-  arbitro: Flag,
+const SYSTEM_BACKGROUNDS: Record<string, string> = {
+  jogador: '/img/campeonato_bg.png',
+  lances: '/img/lances_bg.png',
+  quadra: '/img/gestao_bg.png',
 };
+
+const SYSTEM_DESCRIPTIONS: Record<string, string> = {
+  jogador: 'Organize e participe de campeonatos de futebol amador',
+  quadra: 'Gerencie quadras esportivas e reservas',
+  lances: 'Cameras e gravacoes dos seus jogos',
+};
+
+const HIDDEN_SYSTEMS = new Set(['arbitro']);
+
+interface SystemCard extends SystemInfo {
+  tenantCount: number;
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { user, tenants, logout, refreshUser, isSuperAdmin } = useAuth();
+  const { user, logout, isSuperAdmin } = useAuth();
 
-  const [myTenants, setMyTenants] = useState<SystemWithTenants[]>([]);
-  const [availableTenants, setAvailableTenants] = useState<SystemWithTenants[]>([]);
+  const [systems, setSystems] = useState<SystemCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
 
@@ -31,60 +39,26 @@ export default function DashboardPage() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [myData, availableData] = await Promise.all([
-        api.getMyTenants(),
-        api.getAvailableTenants(),
+      const [allSystems, myTenantsResp] = await Promise.all([
+        api.getSystems(),
+        api.getMyTenants().catch(() => ({ systems: [] as SystemWithTenants[], total: 0 })),
       ]);
 
-      setMyTenants(myData.systems);
+      const countBySystem = new Map<string, number>();
+      myTenantsResp.systems.forEach(s => countBySystem.set(s.slug, s.tenants.length));
 
-      // Filter out tenants user already belongs to
-      const myTenantIds = new Set(
-        myData.systems.flatMap(s => s.tenants.map(t => t.id))
+      setSystems(
+        allSystems
+          .filter(sys => !HIDDEN_SYSTEMS.has(sys.slug))
+          .map(sys => ({
+            ...sys,
+            tenantCount: countBySystem.get(sys.slug) || 0,
+          }))
       );
-
-      const filtered = availableData.systems.map(system => ({
-        ...system,
-        tenants: system.tenants.filter(t => !myTenantIds.has(t.id)),
-      })).filter(s => s.tenants.length > 0);
-
-      setAvailableTenants(filtered);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleEnterTenant = (tenant: TenantInfo) => {
-    // Store tenant info in localStorage (shared across same origin)
-    localStorage.setItem('current_tenant', JSON.stringify(tenant));
-    localStorage.setItem('tenant_slug', tenant.slug);
-    localStorage.setItem('system_slug', tenant.system?.slug || '');
-
-    // Apply theme
-    if (tenant.primaryColor) {
-      localStorage.setItem('tenant_theme', JSON.stringify({
-        primaryColor: tenant.primaryColor,
-      }));
-    }
-
-    // Get hub token to pass to external systems
-    const hubToken = localStorage.getItem('auth_token') || '';
-
-    // Redirect to system URL
-    const baseUrl = tenant.system?.slug === 'lances'
-      ? '/lances'
-      : `/${tenant.system?.slug}/${tenant.slug}`;
-
-    if (tenant.system?.slug === 'lances') {
-      // Internal route - use React Router
-      navigate(baseUrl);
-    } else {
-      // External system - full page redirect with hub token
-      // The target system reads the token from URL and stores locally
-      const separator = baseUrl.includes('?') ? '&' : '?';
-      window.location.href = `${baseUrl}${separator}hub_token=${encodeURIComponent(hubToken)}&tenant=${encodeURIComponent(tenant.slug)}&role=${encodeURIComponent(tenant.role || 'player')}`;
     }
   };
 
@@ -96,7 +70,10 @@ export default function DashboardPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-red-500 animate-spin" />
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-amber-500 animate-spin mx-auto mb-4" />
+          <p className="text-zinc-400 font-bold uppercase tracking-wider text-sm">Carregando...</p>
+        </div>
       </div>
     );
   }
@@ -105,14 +82,12 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
       {/* Header */}
       <header className="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-sm sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center">
-              <span className="text-sm font-black text-white">LO</span>
-            </div>
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img src="/img/logo_vp.png" alt="Varzea Prime" className="w-10 h-10 rounded-xl" />
             <div>
-              <h1 className="text-lg font-bold text-white">Lance de Ouro</h1>
-              <p className="text-xs text-zinc-500">Dashboard</p>
+              <h1 className="text-lg font-black text-white italic tracking-tight">Varzea Prime</h1>
+              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Plataforma Esportiva</p>
             </div>
           </div>
 
@@ -140,7 +115,7 @@ export default function DashboardPage() {
                 onClick={() => setShowMenu(!showMenu)}
                 className="flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition-colors"
               >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center">
                   <span className="text-xs font-bold text-white">
                     {user?.name?.charAt(0).toUpperCase()}
                   </span>
@@ -153,7 +128,7 @@ export default function DashboardPage() {
               {showMenu && (
                 <div className="absolute right-0 top-full mt-2 w-48 rounded-xl bg-zinc-800 border border-zinc-700 shadow-xl py-2 z-50">
                   <button
-                    onClick={() => navigate('/profile')}
+                    onClick={() => { setShowMenu(false); navigate('/profile'); }}
                     className="w-full px-4 py-2 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-700 flex items-center gap-2"
                   >
                     <User className="w-4 h-4" />
@@ -161,7 +136,7 @@ export default function DashboardPage() {
                   </button>
                   <hr className="my-2 border-zinc-700" />
                   <button
-                    onClick={handleLogout}
+                    onClick={() => { setShowMenu(false); handleLogout(); }}
                     className="w-full px-4 py-2 text-left text-sm text-red-400 hover:text-red-300 hover:bg-zinc-700 flex items-center gap-2"
                   >
                     <LogOut className="w-4 h-4" />
@@ -175,168 +150,106 @@ export default function DashboardPage() {
       </header>
 
       {/* Content */}
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main className="max-w-6xl mx-auto px-4 py-10">
         {/* Welcome */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-black text-white">
-            Olá, {user?.nickname || user?.name?.split(' ')[0]}!
+        <div className="text-center mb-10">
+          <img src="/img/logo_vp.png" alt="Varzea Prime" className="w-24 h-24 mx-auto mb-4 drop-shadow-2xl" />
+
+          <h2 className="text-4xl md:text-5xl font-black text-white uppercase italic tracking-tighter mb-2">
+            Varzea Prime
           </h2>
-          <p className="text-zinc-400 mt-1">
-            Selecione um sistema para começar
+
+          <p className="text-zinc-400 text-sm">
+            Ola, <span className="font-bold text-white">{user?.nickname || user?.name?.split(' ')[0]}</span>! Escolha a area que deseja acessar.
           </p>
         </div>
 
-        {/* My Systems */}
-        {myTenants.length > 0 && (
-          <section className="mb-12">
-            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-red-500" />
-              Meus Sistemas
-            </h3>
+        {/* System Cards - Large with background images */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+          {systems.map((system) => {
+            const bgImage = SYSTEM_BACKGROUNDS[system.slug];
+            const description = SYSTEM_DESCRIPTIONS[system.slug] || system.displayName;
 
-            <div className="space-y-6">
-              {myTenants.map((system) => {
-                const Icon = SYSTEM_ICONS[system.slug] || Trophy;
+            return (
+              <button
+                key={system.slug}
+                onClick={() => navigate(`/system/${system.slug}`)}
+                className="group relative overflow-hidden rounded-2xl text-left transition-all duration-500 hover:shadow-2xl hover:scale-[1.02] cursor-pointer aspect-[16/10] min-h-[220px]"
+              >
+                {/* Background Image */}
+                {bgImage && (
+                  <img
+                    src={bgImage}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  />
+                )}
 
-                return (
-                  <div key={system.slug}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center"
-                        style={{ backgroundColor: system.color + '20' }}
+                {/* Gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/20" />
+
+                {/* Colored accent on hover */}
+                <div
+                  className="absolute inset-0 opacity-0 group-hover:opacity-15 transition-opacity duration-500"
+                  style={{ backgroundColor: system.color }}
+                />
+
+                {/* Content */}
+                <div className="relative z-10 h-full flex flex-col justify-end p-6">
+                  {/* Badge with count */}
+                  {system.tenantCount > 0 && (
+                    <div className="absolute top-4 right-4">
+                      <span
+                        className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider text-white"
+                        style={{ backgroundColor: `${system.color}cc` }}
                       >
-                        <Icon className="w-4 h-4" style={{ color: system.color }} />
-                      </div>
-                      <span className="text-sm font-bold text-zinc-400 uppercase tracking-wider">
-                        {system.displayName}
+                        {system.tenantCount} {system.tenantCount === 1 ? 'inscrito' : 'inscritos'}
                       </span>
                     </div>
+                  )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {system.tenants.map((tenant) => (
-                        <button
-                          key={tenant.id}
-                          onClick={() => handleEnterTenant({ ...tenant, system })}
-                          className="group p-4 rounded-2xl bg-zinc-800/50 border border-zinc-700/50 hover:border-zinc-600 transition-all text-left"
-                        >
-                          <div className="flex items-start justify-between mb-3">
-                            <div
-                              className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black"
-                              style={{
-                                backgroundColor: tenant.primaryColor || system.color,
-                                color: '#fff',
-                              }}
-                            >
-                              {tenant.displayName.charAt(0)}
-                            </div>
-                            <span className="text-xs font-bold uppercase px-2 py-1 rounded-lg bg-zinc-700 text-zinc-400">
-                              {tenant.role || 'player'}
-                            </span>
-                          </div>
+                  {/* System name */}
+                  <h3 className="text-2xl md:text-3xl font-black text-white uppercase italic tracking-tighter mb-1 drop-shadow-lg">
+                    {system.displayName}
+                  </h3>
 
-                          <h4 className="font-bold text-white group-hover:text-red-400 transition-colors">
-                            {tenant.displayName}
-                          </h4>
+                  {/* Description */}
+                  <p className="text-sm text-zinc-300 font-medium mb-3 drop-shadow">
+                    {description}
+                  </p>
 
-                          <div className="flex items-center gap-1 mt-2 text-sm text-zinc-500 group-hover:text-zinc-400">
-                            Entrar
-                            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                  {/* CTA */}
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider text-white transition-all duration-300 group-hover:gap-3"
+                      style={{ backgroundColor: `${system.color}dd` }}
+                    >
+                      Acessar
+                      <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
+                </div>
 
-        {/* Available Systems */}
-        {availableTenants.length > 0 && (
-          <section>
-            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-              <Search className="w-5 h-5 text-blue-500" />
-              Descobrir Sistemas
-            </h3>
+                {/* Bottom accent line */}
+                <div
+                  className="absolute bottom-0 left-0 right-0 h-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ backgroundColor: system.color }}
+                />
+              </button>
+            );
+          })}
+        </div>
 
-            <div className="space-y-6">
-              {availableTenants.map((system) => {
-                const Icon = SYSTEM_ICONS[system.slug] || Trophy;
-
-                return (
-                  <div key={system.slug}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center"
-                        style={{ backgroundColor: system.color + '20' }}
-                      >
-                        <Icon className="w-4 h-4" style={{ color: system.color }} />
-                      </div>
-                      <span className="text-sm font-bold text-zinc-400 uppercase tracking-wider">
-                        {system.displayName}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {system.tenants.map((tenant) => (
-                        <button
-                          key={tenant.id}
-                          onClick={() => navigate(`/discover/${tenant.slug}`)}
-                          className="group p-4 rounded-2xl bg-zinc-800/30 border border-dashed border-zinc-700 hover:border-zinc-500 transition-all text-left"
-                        >
-                          <div className="flex items-start justify-between mb-3">
-                            <div
-                              className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black opacity-60"
-                              style={{
-                                backgroundColor: tenant.primaryColor || system.color,
-                                color: '#fff',
-                              }}
-                            >
-                              {tenant.displayName.charAt(0)}
-                            </div>
-                          </div>
-
-                          <h4 className="font-bold text-zinc-400 group-hover:text-white transition-colors">
-                            {tenant.displayName}
-                          </h4>
-
-                          <div className="flex items-center gap-1 mt-2 text-sm text-blue-500">
-                            <Plus className="w-4 h-4" />
-                            Participar
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
-        {/* Empty State */}
-        {myTenants.length === 0 && availableTenants.length === 0 && (
-          <div className="text-center py-16">
-            <div className="w-20 h-20 rounded-full bg-zinc-800 flex items-center justify-center mx-auto mb-4">
-              <Search className="w-10 h-10 text-zinc-600" />
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2">
-              Nenhum sistema disponível
-            </h3>
-            <p className="text-zinc-500">
-              Aguarde novos sistemas serem criados
-            </p>
-          </div>
-        )}
+        {/* Footer */}
+        <div className="text-center mt-14">
+          <p className="text-zinc-700 text-xs font-bold uppercase tracking-widest">
+            Sistema Integrado de Gestao Esportiva
+          </p>
+        </div>
       </main>
 
-      {/* Click outside to close menu */}
       {showMenu && (
-        <div
-          className="fixed inset-0 z-30"
-          onClick={() => setShowMenu(false)}
-        />
+        <div className="fixed inset-0 z-30" onClick={() => setShowMenu(false)} />
       )}
     </div>
   );

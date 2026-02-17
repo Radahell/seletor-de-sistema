@@ -34,6 +34,11 @@ server {
         try_files $uri =404;
     }
 
+    # System routes handled by reverse proxy - return 404 if accessed directly
+    location /jogador/ { return 404; }
+    location /quadra/  { return 404; }
+    location /arbitro/ { return 404; }
+
     # SPA fallback
     location / {
         try_files $uri $uri/ /index.html;

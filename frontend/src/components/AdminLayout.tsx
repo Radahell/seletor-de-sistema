@@ -8,7 +8,7 @@ import { useAdminAuth } from '../contexts/AdminAuthContext';
 const NAV_ITEMS = [
   { to: '/admin', label: 'Painel Geral', icon: LayoutDashboard, end: true },
   { to: '/admin/establishments', label: 'Estabelecimentos', icon: Building2 },
-  { to: '/admin/players', label: 'Jogadores', icon: Users },
+  { to: '/admin/players', label: 'Usuarios', icon: Users },
   { to: '/admin/users', label: 'Operadores', icon: UserCog },
   { to: '/admin/billing', label: 'Faturamento', icon: Receipt },
   { to: '/admin/security', label: 'Seguranca', icon: Shield },

@@ -126,9 +126,9 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- ==========================================
 INSERT INTO systems (slug, display_name, description, icon, color, base_route, display_order, is_active)
 VALUES
-('jogador', 'Sistema de Jogadores', 'Gestão de campeonatos e jogadores', 'trophy',  '#ef4444', '/jogador', 1, TRUE),
-('quadra',  'Gestão de Quadras',      'Reservas e gestão de espaços esportivos', 'building', '#3b82f6', '/quadra',  2, TRUE),
-('arbitro', 'Portal do Árbitro',      'Escalas e gestão de arbitragem', 'whistle', '#f59e0b', '/arbitro', 3, TRUE)
+('jogador', 'Campeonatos',        'Gerencie seus campeonatos de futebol',    'trophy',  '#ef4444', '/jogador', 1, TRUE),
+('quadra',  'Gestão de Quadras',  'Reservas e gestão de espaços esportivos', 'building', '#3b82f6', '/quadra',  2, TRUE),
+('arbitro', 'Portal do Árbitro',  'Escalas e gestão de arbitragem',          'whistle', '#f59e0b', '/arbitro', 3, TRUE)
 ON DUPLICATE KEY UPDATE
 display_name = VALUES(display_name),
 description  = VALUES(description),
@@ -154,31 +154,31 @@ VALUES
   (SELECT id FROM systems WHERE slug='jogador' LIMIT 1),
   'copa-brahma', 'Copa Brahma', 'copa_brahma_db', 'varzea-prime-db',
   '#FFD700', '#000000', '#FFFFFF', 'Bem-vindo à Copa Brahma - O melhor futebol amador!',
-  TRUE, TRUE, FALSE
+  TRUE, FALSE, FALSE
 ),
 (
   (SELECT id FROM systems WHERE slug='jogador' LIMIT 1),
   'copa-aposentados', 'Copa AposentadoS', 'copa_aposentados', 'varzea-prime-db',
   '#ef4444', '#f59e0b', '#3b82f6', 'Bem-vindo à Copa AposentadoS - Experiência em campo!',
-  TRUE, TRUE, FALSE
+  TRUE, FALSE, FALSE
 ),
 (
   (SELECT id FROM systems WHERE slug='jogador' LIMIT 1),
   'liga-ouro', 'Liga Ouro', 'liga_ouro_db', 'varzea-prime-db',
   '#F4C430', '#C0C0C0', '#CD7F32', 'Bem-vindo à Liga Ouro - Onde campeões são forjados!',
-  TRUE, TRUE, FALSE
+  TRUE, FALSE, FALSE
 ),
 (
   (SELECT id FROM systems WHERE slug='quadra' LIMIT 1),
   'arena-sport', 'Arena Sport Center', 'arena_sport_db', 'varzea-prime-db',
   '#10b981', '#059669', '#3b82f6', 'Bem-vindo à Arena Sport - Reserve sua quadra!',
-  TRUE, TRUE, FALSE
+  TRUE, FALSE, FALSE
 ),
 (
   (SELECT id FROM systems WHERE slug='quadra' LIMIT 1),
   'society-club', 'Society Club', 'society_club_db', 'varzea-prime-db',
   '#8b5cf6', '#7c3aed', '#3b82f6', 'Society Club - A melhor infraestrutura para seu jogo',
-  TRUE, TRUE, FALSE
+  TRUE, FALSE, FALSE
 )
 ON DUPLICATE KEY UPDATE
 display_name       = VALUES(display_name),

@@ -104,11 +104,15 @@ export default function AdminTenantsPage() {
           <div>
             <label className="block text-sm text-zinc-400 mb-2">Tipo de Sistema</label>
             <div className="grid grid-cols-3 gap-3">
-              {['jogador', 'quadra', 'arbitro'].map((sys) => (
+              {[
+                { slug: 'jogador', label: 'Campeonato' },
+                { slug: 'quadra', label: 'Gestao de Quadras' },
+                { slug: 'arbitro', label: 'Arbitragem' },
+              ].map(({ slug, label }) => (
                 <label
-                  key={sys}
+                  key={slug}
                   className={`cursor-pointer border rounded-lg p-3 flex flex-col items-center gap-2 transition-colors ${
-                    form.systemSlug === sys
+                    form.systemSlug === slug
                       ? 'border-yellow-500 bg-yellow-500/10 text-yellow-500'
                       : 'border-zinc-700 hover:bg-zinc-800 text-zinc-400'
                   }`}
@@ -116,13 +120,13 @@ export default function AdminTenantsPage() {
                   <input
                     type="radio"
                     name="systemSlug"
-                    value={sys}
-                    checked={form.systemSlug === sys}
+                    value={slug}
+                    checked={form.systemSlug === slug}
                     onChange={handleChange}
                     className="hidden"
                   />
                   <Database className="w-5 h-5" />
-                  <span className="capitalize font-semibold text-sm">{sys}</span>
+                  <span className="font-semibold text-sm">{label}</span>
                 </label>
               ))}
             </div>
@@ -130,8 +134,8 @@ export default function AdminTenantsPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-zinc-400 mb-1">Nome do Cliente</label>
-              <input name="displayName" value={form.displayName} onChange={handleChange} placeholder="Arena Sport" className={INPUT_CLS} required />
+              <label className="block text-sm text-zinc-400 mb-1">Nome</label>
+              <input name="displayName" value={form.displayName} onChange={handleChange} placeholder="Ex: Copa Brahma, Arena Sport" className={INPUT_CLS} required />
             </div>
             <div>
               <label className="block text-sm text-zinc-400 mb-1">Slug</label>

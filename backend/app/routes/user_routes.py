@@ -96,3 +96,44 @@ def get_user_profile(user_id: int):
         if ENV == "dev":
             traceback.print_exc()
         return jsonify({"error": safe_db_error(e)}), 500
+
+
+@user_bp.get("/by-tenant/<slug>")
+@_service_auth_required
+def get_users_by_tenant(slug: str):
+    """Retorna usuarios vinculados a um tenant (inter-service).
+
+    Usado pelo SGQ e outros sistemas para listar membros/clientes.
+    """
+    try:
+        tenant = fetch_one(
+            "SELECT id FROM tenants WHERE slug = :slug AND is_active = TRUE",
+            {"slug": slug},
+        )
+        if not tenant:
+            return jsonify({"error": "Tenant não encontrado"}), 404
+
+        rows = fetch_all(
+            """
+            SELECT u.*, ut.role, ut.joined_at
+            FROM user_tenants ut
+            INNER JOIN users u ON ut.user_id = u.id
+            WHERE ut.tenant_id = :tid AND ut.is_active = TRUE
+            ORDER BY u.name
+            """,
+            {"tid": tenant["id"]},
+        )
+
+        users = []
+        for r in rows:
+            dto = _user_profile_dto(r)
+            dto["role"] = r.get("role", "player")
+            dto["joinedAt"] = r["joined_at"].isoformat() if r.get("joined_at") else None
+            users.append(dto)
+
+        return jsonify({"users": users, "total": len(users)})
+
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+        return jsonify({"error": safe_db_error(e)}), 500
