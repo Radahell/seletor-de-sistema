@@ -64,8 +64,8 @@ export default function AdminPlayersPage() {
       if (filters.sort_dir) params.sort_dir = filters.sort_dir;
       const res = await fetchPlayers(params);
       setData(res);
-    } catch {
-      /* silent */
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar usuarios.');
     } finally {
       setLoading(false);
     }
