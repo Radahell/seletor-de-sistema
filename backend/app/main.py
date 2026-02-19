@@ -132,6 +132,36 @@ def serve_download(filename: str):
     return response
 
 
+@app.get("/api/downloads")
+def list_downloads():
+    """Lista APKs disponíveis no diretório compartilhado /downloads."""
+    downloads_dir = "/downloads"
+
+    if not os.path.isdir(downloads_dir):
+        return jsonify({"files": []})
+
+    files = []
+    for entry in os.scandir(downloads_dir):
+        if not entry.is_file():
+            continue
+        if not entry.name.lower().endswith(".apk"):
+            continue
+
+        stat = entry.stat()
+        files.append(
+            {
+                "name": entry.name,
+                "size": stat.st_size,
+                "updatedAt": datetime.datetime.fromtimestamp(
+                    stat.st_mtime, tz=datetime.timezone.utc
+                ).isoformat(),
+            }
+        )
+
+    files.sort(key=lambda item: item["updatedAt"], reverse=True)
+    return jsonify({"files": files})
+
+
 @app.get("/api/systems")
 def list_systems():
     try:

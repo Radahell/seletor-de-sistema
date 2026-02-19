@@ -151,6 +151,10 @@ class ApiService {
   async getSystems() {
     return this.request<SystemInfo[]>('/api/systems', { skipAuth: true });
   }
+
+  async getDownloads() {
+    return this.request<{ files: DownloadFileInfo[] }>('/api/downloads', { skipAuth: true });
+  }
 }
 
 // Error class
@@ -224,6 +228,12 @@ export interface TenantDetails extends TenantInfo {
 
 export interface SystemWithTenants extends SystemInfo {
   tenants: TenantInfo[];
+}
+
+export interface DownloadFileInfo {
+  name: string;
+  size: number;
+  updatedAt: string;
 }
 
 export interface RegisterData {

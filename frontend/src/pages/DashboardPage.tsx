@@ -4,7 +4,7 @@ import {
   LogOut, User, Loader2, RefreshCw, Shield, ChevronRight, Smartphone, Download
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import api, { SystemInfo, SystemWithTenants } from '../services/api';
+import api, { DownloadFileInfo, SystemInfo, SystemWithTenants } from '../services/api';
 
 const SYSTEM_BACKGROUNDS: Record<string, string> = {
   jogador: '/img/campeonato_bg.png',
@@ -20,24 +20,35 @@ const SYSTEM_DESCRIPTIONS: Record<string, string> = {
 
 const HIDDEN_SYSTEMS = new Set(['arbitro']);
 
-const MOBILE_APPS = [
-  {
-    id: 'varzea-prime',
-    name: 'Varzea Prime',
-    description: 'Campeonatos, escalacoes e resultados na palma da mao',
-    color: '#ef4444',
-    apkUrl: '/downloads/AppVarzeaPrime.apk',
-    bgImage: '/img/campeonato_bg.png',
-  },
-  {
-    id: 'lance-de-ouro',
-    name: 'Lance de Ouro',
-    description: 'Operador de campo — cameras e gravacoes offline',
-    color: '#f59e0b',
-    apkUrl: '/downloads/AppLanceDeOuro.apk',
-    bgImage: '/img/lances_bg.png',
-  },
+const APK_CARD_THEMES = [
+  { color: '#ef4444', bgImage: '/img/campeonato_bg.png' },
+  { color: '#f59e0b', bgImage: '/img/lances_bg.png' },
+  { color: '#3b82f6', bgImage: '/img/gestao_bg.png' },
 ];
+
+interface MobileAppCard {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  apkUrl: string;
+  bgImage: string;
+}
+
+const mapDownloadToCard = (file: DownloadFileInfo, index: number): MobileAppCard => {
+  const theme = APK_CARD_THEMES[index % APK_CARD_THEMES.length];
+  const baseName = file.name.replace(/\.apk$/i, '');
+  const prettyName = baseName.replace(/[-_]+/g, ' ').trim();
+
+  return {
+    id: file.name,
+    name: prettyName || file.name,
+    description: `Arquivo ${file.name}`,
+    color: theme.color,
+    apkUrl: `/seletor-api/downloads/${encodeURIComponent(file.name)}`,
+    bgImage: theme.bgImage,
+  };
+};
 
 interface SystemCard extends SystemInfo {
   tenantCount: number;
@@ -48,6 +59,7 @@ export default function DashboardPage() {
   const { user, logout, isSuperAdmin } = useAuth();
 
   const [systems, setSystems] = useState<SystemCard[]>([]);
+  const [mobileApps, setMobileApps] = useState<MobileAppCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
 
@@ -58,9 +70,10 @@ export default function DashboardPage() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [allSystems, myTenantsResp] = await Promise.all([
+      const [allSystems, myTenantsResp, downloadsResp] = await Promise.all([
         api.getSystems(),
         api.getMyTenants().catch(() => ({ systems: [] as SystemWithTenants[], total: 0 })),
+        api.getDownloads().catch(() => ({ files: [] as DownloadFileInfo[] })),
       ]);
 
       const countBySystem = new Map<string, number>();
@@ -74,6 +87,8 @@ export default function DashboardPage() {
             tenantCount: countBySystem.get(sys.slug) || 0,
           }))
       );
+
+      setMobileApps(downloadsResp.files.map(mapDownloadToCard));
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -271,7 +286,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {MOBILE_APPS.map((app) => (
+            {mobileApps.map((app) => (
               <a
                 key={app.id}
                 href={app.apkUrl}
@@ -331,6 +346,12 @@ export default function DashboardPage() {
               </a>
             ))}
           </div>
+
+          {mobileApps.length === 0 && (
+            <p className="text-center text-sm text-zinc-500 font-semibold mt-4">
+              Nenhum APK encontrado em /downloads.
+            </p>
+          )}
         </div>
 
         {/* Footer */}
