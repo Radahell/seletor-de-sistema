@@ -9,7 +9,7 @@ from functools import wraps
 from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import create_engine, text
@@ -119,6 +119,12 @@ def _tenant_row_to_dto(row: Dict[str, Any]) -> Dict[str, Any]:
 @app.get("/health")
 def health():
     return jsonify({"ok": True})
+
+
+@app.get("/downloads/<path:filename>")
+def serve_download(filename: str):
+    """Serve arquivos de /downloads (APKs, etc)."""
+    return send_from_directory("/downloads", filename)
 
 
 @app.get("/api/systems")
