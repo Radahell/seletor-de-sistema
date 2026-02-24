@@ -45,7 +45,7 @@ const mapDownloadToCard = (file: DownloadFileInfo, index: number): MobileAppCard
     name: prettyName || file.name,
     description: `Arquivo ${file.name}`,
     color: theme.color,
-    apkUrl: `/seletor-api/downloads/${encodeURIComponent(file.name)}`,
+    apkUrl: `/seletor-api/downloads/${encodeURIComponent(file.name)}?v=${encodeURIComponent(file.updatedAt)}`,
     bgImage: theme.bgImage,
   };
 };

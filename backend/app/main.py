@@ -162,7 +162,12 @@ def list_downloads():
         )
 
     files.sort(key=lambda item: item["updatedAt"], reverse=True)
-    return jsonify({"files": files})
+
+    response = jsonify({"files": files})
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["CDN-Cache-Control"] = "no-store"
+    response.headers["Cloudflare-CDN-Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/api/systems")
