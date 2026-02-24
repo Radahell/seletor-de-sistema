@@ -99,8 +99,8 @@ def _system_row_to_dto(row: Dict[str, Any]) -> Dict[str, Any]:
         "slug": row["slug"],
         "displayName": row.get("display_name") or "",
         "description": row.get("description") or "",
-        "iconName": row.get("icon") or "trophy",
-        "primaryColor": row.get("color") or "#ef4444",
+        "icon": row.get("icon") or "trophy",
+        "color": row.get("color") or "#ef4444",
         "baseUrl": row.get("base_route") or "/",
         "isActive": bool(row.get("is_active", True)),
     }

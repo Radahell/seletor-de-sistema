@@ -7,8 +7,8 @@ interface SystemType {
   slug: string;
   displayName: string;
   description: string;
-  iconName: string;
-  primaryColor: string;
+  icon: string;
+  color: string;
   baseUrl: string;
   isActive: boolean;
   displayOrder: number;
@@ -108,8 +108,8 @@ export default function AdminTenantsPage() {
       slug: sys.slug,
       displayName: sys.displayName,
       description: sys.description,
-      icon: sys.iconName,
-      color: sys.primaryColor,
+      icon: sys.icon,
+      color: sys.color,
       baseRoute: sys.baseUrl,
       isActive: sys.isActive,
       displayOrder: sys.displayOrder,
@@ -344,11 +344,11 @@ export default function AdminTenantsPage() {
                     <td className="p-3 text-zinc-500 font-mono text-xs">{sys.displayOrder}</td>
                     <td className="p-3 font-mono text-xs text-zinc-400">{sys.slug}</td>
                     <td className="p-3 text-white font-medium">{sys.displayName}</td>
-                    <td className="p-3 text-zinc-400 text-xs">{sys.iconName}</td>
+                    <td className="p-3 text-zinc-400 text-xs">{sys.icon}</td>
                     <td className="p-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-full border border-zinc-600" style={{ backgroundColor: sys.primaryColor }} />
-                        <span className="text-zinc-500 text-xs font-mono">{sys.primaryColor}</span>
+                        <div className="w-4 h-4 rounded-full border border-zinc-600" style={{ backgroundColor: sys.color }} />
+                        <span className="text-zinc-500 text-xs font-mono">{sys.color}</span>
                       </div>
                     </td>
                     <td className="p-3 text-zinc-400 font-mono text-xs">{sys.baseUrl}</td>
