@@ -101,8 +101,11 @@ export default function LancesPage() {
         setRecordings(data.recordings);
       } else if (activeTab === 'live') {
         try {
+          const tenantParam = currentTenant?.slug
+            ? `?tenant_id=${encodeURIComponent(currentTenant.slug)}`
+            : '';
           const data = await sclFetch<SessionInfo[]>(
-            '/api/athlete/sessions', token
+            `/api/athlete/sessions${tenantParam}`, token
           );
           setSessions(Array.isArray(data) ? data : []);
         } catch {
