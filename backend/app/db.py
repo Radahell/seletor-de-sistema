@@ -23,9 +23,9 @@ TEMPLATES_DIR = APP_DIR / "templates_sql"
 # ENV / CONFIG
 # ============================================================
 # Banco MASTER do Seletor (systems/tenants/super_admins)
-MASTER_DATABASE_URL = os.getenv("DATABASE_URL")
+MASTER_DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("MASTER_DB_URL")
 if not MASTER_DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is required for Seletor (master DB).")
+    raise RuntimeError("DATABASE_URL or MASTER_DB_URL is required for Seletor (master DB).")
 
 ENV = os.getenv("ENV", "dev")
 
