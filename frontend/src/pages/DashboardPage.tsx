@@ -64,14 +64,13 @@ export default function DashboardPage() {
   const [systemsError, setSystemsError] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const loadSystems = useCallback(async () => {
     setIsLoading(true);
     setSystemsError(false);
     try {
-      const [systemsResult, myTenantsResp, downloadsResp] = await Promise.all([
+      const [systemsResult, myTenantsResp] = await Promise.all([
         api.getSystems().catch((e) => { console.error('getSystems error:', e); return null; }),
         api.getMyTenants().catch(() => ({ systems: [] as SystemWithTenants[], total: 0 })),
-        api.getDownloads().catch(() => ({ files: [] as DownloadFileInfo[] })),
       ]);
 
       if (systemsResult === null) {
@@ -89,26 +88,41 @@ export default function DashboardPage() {
             }))
         );
       }
-
-      setMobileApps(downloadsResp.files.map(mapDownloadToCard));
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Error loading systems:', error);
       setSystemsError(true);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
+  const loadDownloads = useCallback(async () => {
+    try {
+      const downloadsResp = await api.getDownloads().catch(() => ({ files: [] as DownloadFileInfo[] }));
+      setMobileApps(downloadsResp.files.map(mapDownloadToCard));
+    } catch (error) {
+      console.error('Error loading downloads:', error);
+    }
+  }, []);
 
-    const intervalId = window.setInterval(() => {
-      loadData();
-    }, 15000);
+  const loadAll = useCallback(() => {
+    loadSystems();
+    loadDownloads();
+  }, [loadSystems, loadDownloads]);
+
+  // Load systems + downloads once on mount
+  useEffect(() => {
+    loadSystems();
+    loadDownloads();
+  }, [loadSystems, loadDownloads]);
+
+  // Auto-reload only downloads (APKs) every 15s
+  useEffect(() => {
+    const intervalId = window.setInterval(loadDownloads, 15000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        loadData();
+        loadDownloads();
       }
     };
 
@@ -118,7 +132,7 @@ export default function DashboardPage() {
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [loadData]);
+  }, [loadDownloads]);
 
   const handleLogout = async () => {
     await logout();
@@ -161,7 +175,7 @@ export default function DashboardPage() {
             )}
 
             <button
-              onClick={loadData}
+              onClick={loadAll}
               className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
               title="Atualizar"
             >
@@ -228,7 +242,7 @@ export default function DashboardPage() {
             <div className="col-span-2 text-center py-8">
               <p className="text-red-400 font-semibold text-sm mb-2">Erro ao carregar sistemas.</p>
               <button
-                onClick={loadData}
+                onClick={loadAll}
                 className="text-xs text-zinc-400 hover:text-white underline"
               >
                 Tentar novamente

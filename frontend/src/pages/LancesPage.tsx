@@ -101,11 +101,9 @@ export default function LancesPage() {
         setRecordings(data.recordings);
       } else if (activeTab === 'live') {
         try {
-          const tenantParam = currentTenant?.slug
-            ? `?tenant_id=${encodeURIComponent(currentTenant.slug)}`
-            : '';
+          // Don't filter by tenant — show all active sessions the user can see
           const data = await sclFetch<SessionInfo[]>(
-            `/api/athlete/sessions${tenantParam}`, token
+            '/api/athlete/sessions', token
           );
           setSessions(Array.isArray(data) ? data : []);
         } catch {
@@ -516,9 +514,11 @@ export default function LancesPage() {
                         </div>
 
                         <div className="p-4">
-                          <h3 className="font-bold text-white">{session.device_name || 'Câmera'}</h3>
+                          <h3 className="font-bold text-white">{(session as any).field_name || session.device_name || 'Sessão ao vivo'}</h3>
                           <p className="text-xs text-zinc-500 mt-1">
-                            {session.channel || 'cam_a'}
+                            {((session as any).connected_cameras ?? [session.channel || 'cam_a']).join(', ')}
+                            {' · '}
+                            {(session as any).cameras_connected ?? 0} câmera{((session as any).cameras_connected ?? 0) !== 1 ? 's' : ''}
                             {' · '}
                             Desde {formatDate(session.started_at)}
                           </p>
