@@ -1,8 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  LogOut, User, Loader2, RefreshCw, Shield, ChevronRight, Smartphone, Download
+  ChevronRight,
+  Download,
+  Loader2,
+  LogOut,
+  RefreshCw, Shield,
+  Smartphone,
+  User
 } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api, { DownloadFileInfo, SystemInfo, SystemWithTenants } from '../services/api';
 
@@ -15,7 +21,7 @@ const SYSTEM_BACKGROUNDS: Record<string, string> = {
 const SYSTEM_DESCRIPTIONS: Record<string, string> = {
   jogador: 'Organize e participe de campeonatos de futebol amador',
   quadra: 'Gerencie quadras esportivas e reservas',
-  lances: 'Cameras e gravacoes dos seus jogos',
+  lances: 'Câmeras e gravações dos seus jogos',
 };
 
 const HIDDEN_SYSTEMS = new Set(['arbitro']);
@@ -27,19 +33,14 @@ const APK_CARD_THEMES = [
 ];
 
 interface MobileAppCard {
-  id: string;
-  name: string;
-  description: string;
-  color: string;
-  apkUrl: string;
-  bgImage: string;
+  id: string; name: string; description: string;
+  color: string; apkUrl: string; bgImage: string;
 }
 
 const mapDownloadToCard = (file: DownloadFileInfo, index: number): MobileAppCard => {
   const theme = APK_CARD_THEMES[index % APK_CARD_THEMES.length];
   const baseName = file.name.replace(/\.apk$/i, '');
   const prettyName = baseName.replace(/[-_]+/g, ' ').trim();
-
   return {
     id: file.name,
     name: prettyName || file.name,
@@ -50,9 +51,7 @@ const mapDownloadToCard = (file: DownloadFileInfo, index: number): MobileAppCard
   };
 };
 
-interface SystemCard extends SystemInfo {
-  tenantCount: number;
-}
+interface SystemCard extends SystemInfo { tenantCount: number }
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -65,153 +64,110 @@ export default function DashboardPage() {
   const [showMenu, setShowMenu] = useState(false);
 
   const loadSystems = useCallback(async () => {
-    setIsLoading(true);
-    setSystemsError(false);
+    setIsLoading(true); setSystemsError(false);
     try {
       const [systemsResult, myTenantsResp] = await Promise.all([
         api.getSystems().catch((e) => { console.error('getSystems error:', e); return null; }),
         api.getMyTenants().catch(() => ({ systems: [] as SystemWithTenants[], total: 0 })),
       ]);
-
-      if (systemsResult === null) {
-        setSystemsError(true);
-      } else {
+      if (systemsResult === null) { setSystemsError(true); }
+      else {
         const countBySystem = new Map<string, number>();
         myTenantsResp.systems.forEach(s => countBySystem.set(s.slug, s.tenants.length));
-
-        setSystems(
-          systemsResult
-            .filter(sys => !HIDDEN_SYSTEMS.has(sys.slug))
-            .map(sys => ({
-              ...sys,
-              tenantCount: countBySystem.get(sys.slug) || 0,
-            }))
-        );
+        setSystems(systemsResult.filter(sys => !HIDDEN_SYSTEMS.has(sys.slug)).map(sys => ({ ...sys, tenantCount: countBySystem.get(sys.slug) || 0 })));
       }
-    } catch (error) {
-      console.error('Error loading systems:', error);
-      setSystemsError(true);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch { setSystemsError(true); }
+    finally { setIsLoading(false); }
   }, []);
 
   const loadDownloads = useCallback(async () => {
     try {
-      const downloadsResp = await api.getDownloads().catch(() => ({ files: [] as DownloadFileInfo[] }));
-      setMobileApps(downloadsResp.files.map(mapDownloadToCard));
-    } catch (error) {
-      console.error('Error loading downloads:', error);
-    }
+      const resp = await api.getDownloads().catch(() => ({ files: [] as DownloadFileInfo[] }));
+      setMobileApps(resp.files.map(mapDownloadToCard));
+    } catch {}
   }, []);
 
-  const loadAll = useCallback(() => {
-    loadSystems();
-    loadDownloads();
-  }, [loadSystems, loadDownloads]);
+  const loadAll = useCallback(() => { loadSystems(); loadDownloads(); }, [loadSystems, loadDownloads]);
 
-  // Load systems + downloads once on mount
+  useEffect(() => { loadSystems(); loadDownloads(); }, [loadSystems, loadDownloads]);
+
   useEffect(() => {
-    loadSystems();
-    loadDownloads();
-  }, [loadSystems, loadDownloads]);
-
-  // Auto-reload only downloads (APKs) every 15s
-  useEffect(() => {
-    const intervalId = window.setInterval(loadDownloads, 15000);
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        loadDownloads();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    const id = window.setInterval(loadDownloads, 15000);
+    const handleVis = () => { if (document.visibilityState === 'visible') loadDownloads(); };
+    document.addEventListener('visibilitychange', handleVis);
+    return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', handleVis); };
   }, [loadDownloads]);
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/auth');
-  };
+  const handleLogout = async () => { await logout(); navigate('/auth'); };
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-amber-500 animate-spin mx-auto mb-4" />
-          <p className="text-zinc-400 font-bold uppercase tracking-wider text-sm">Carregando...</p>
+      <div style={{ minHeight: '100vh', background: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <Loader2 style={{ width: 40, height: 40, color: '#f59e0b', margin: '0 auto 16px', animation: 'spin 1s linear infinite' }} />
+          <p style={{ color: '#334155', fontWeight: 800, letterSpacing: '0.2em', fontSize: 11, textTransform: 'uppercase' }}>Carregando...</p>
         </div>
       </div>
     );
   }
 
+  const initials = user?.name?.charAt(0).toUpperCase() ?? '?';
+  const firstName = user?.nickname || user?.name?.split(' ')[0];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
-      {/* Header */}
-      <header className="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-sm sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/img/logo_vp.png" alt="Varzea Prime" className="w-10 h-10 rounded-xl" />
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(160deg, #020617 0%, #0a0f1e 50%, #020617 100%)', position: 'relative' }}>
+
+      {/* Ambient top glow */}
+      <div style={{ position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)', width: 800, height: 400, background: 'radial-gradient(ellipse at center top, rgba(245,158,11,0.04) 0%, transparent 70%)', pointerEvents: 'none', zIndex: 0 }} />
+
+      {/* ── Header ── */}
+      <header style={{
+        position: 'sticky', top: 0, zIndex: 40,
+        borderBottom: '1px solid rgba(255,255,255,0.05)',
+        background: 'rgba(2,6,23,0.85)',
+        backdropFilter: 'blur(20px)',
+      }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <img src="/img/logo_vp.png" alt="Varzea Prime" style={{ width: 38, height: 38, borderRadius: 12 }} />
             <div>
-              <h1 className="text-lg font-black text-white italic tracking-tight">Varzea Prime</h1>
-              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Plataforma Esportiva</p>
+              <h1 style={{ color: '#f8fafc', fontWeight: 900, fontSize: 17, fontStyle: 'italic', letterSpacing: -0.5, margin: 0 }}>Varzea Prime</h1>
+              <p style={{ color: '#1e293b', fontWeight: 800, fontSize: 9, letterSpacing: '0.25em', textTransform: 'uppercase', margin: 0 }}>Plataforma Esportiva</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {isSuperAdmin && (
-              <button
-                onClick={() => navigate('/admin')}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 transition-colors text-sm font-semibold"
-              >
-                <Shield className="w-4 h-4" />
-                <span className="hidden sm:inline">Admin</span>
+              <button onClick={() => navigate('/admin')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 10, background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', color: '#eab308', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                <Shield style={{ width: 14, height: 14 }} />
+                <span>Admin</span>
               </button>
             )}
 
-            <button
-              onClick={loadAll}
-              className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-              title="Atualizar"
-            >
-              <RefreshCw className="w-5 h-5" />
+            <button onClick={loadAll} style={{ padding: 8, borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Atualizar">
+              <RefreshCw style={{ width: 15, height: 15 }} />
             </button>
 
-            <div className="relative">
-              <button
-                onClick={() => setShowMenu(!showMenu)}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition-colors"
-              >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center">
-                  <span className="text-xs font-bold text-white">
-                    {user?.name?.charAt(0).toUpperCase()}
-                  </span>
+            {/* User menu */}
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setShowMenu(!showMenu)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer' }}>
+                <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #b45309)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ color: '#000', fontWeight: 900, fontSize: 12 }}>{initials}</span>
                 </div>
-                <span className="text-sm font-medium text-white hidden sm:block">
-                  {user?.nickname || user?.name?.split(' ')[0]}
-                </span>
+                <span style={{ color: '#cbd5e1', fontWeight: 600, fontSize: 13 }} className="hidden-mobile">{firstName}</span>
               </button>
 
               {showMenu && (
-                <div className="absolute right-0 top-full mt-2 w-48 rounded-xl bg-zinc-800 border border-zinc-700 shadow-xl py-2 z-50">
-                  <button
-                    onClick={() => { setShowMenu(false); navigate('/profile'); }}
-                    className="w-full px-4 py-2 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-700 flex items-center gap-2"
-                  >
-                    <User className="w-4 h-4" />
+                <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', width: 180, borderRadius: 16, background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '6px', zIndex: 50 }}>
+                  <button onClick={() => { setShowMenu(false); navigate('/profile'); }} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, background: 'none', border: 'none', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', textAlign: 'left' }}>
+                    <User style={{ width: 14, height: 14 }} />
                     Meu Perfil
                   </button>
-                  <hr className="my-2 border-zinc-700" />
-                  <button
-                    onClick={() => { setShowMenu(false); handleLogout(); }}
-                    className="w-full px-4 py-2 text-left text-sm text-red-400 hover:text-red-300 hover:bg-zinc-700 flex items-center gap-2"
-                  >
-                    <LogOut className="w-4 h-4" />
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '4px 0' }} />
+                  <button onClick={() => { setShowMenu(false); handleLogout(); }} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, background: 'none', border: 'none', color: '#f87171', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', textAlign: 'left' }}>
+                    <LogOut style={{ width: 14, height: 14 }} />
                     Sair
                   </button>
                 </div>
@@ -221,199 +177,170 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* Content */}
-      <main className="max-w-6xl mx-auto px-4 py-10">
+      {/* ── Main ── */}
+      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '48px 20px 80px', position: 'relative', zIndex: 1 }}>
+
         {/* Welcome */}
-        <div className="text-center mb-10">
-          <img src="/img/logo_vp.png" alt="Varzea Prime" className="w-24 h-24 mx-auto mb-4 drop-shadow-2xl" />
+        <div style={{ textAlign: 'center', marginBottom: 56 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 16px', borderRadius: 999, background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.15)', marginBottom: 20 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b' }} />
+            <span style={{ color: '#d97706', fontSize: 11, fontWeight: 800, letterSpacing: '0.2em', textTransform: 'uppercase' }}>Bem-vindo de volta</span>
+          </div>
 
-          <h2 className="text-4xl md:text-5xl font-black text-white uppercase italic tracking-tighter mb-2">
-            Varzea Prime
+          <h2 style={{ color: '#f8fafc', fontWeight: 900, fontSize: 'clamp(36px, 6vw, 56px)', fontStyle: 'italic', letterSpacing: -2, textTransform: 'uppercase', lineHeight: 1, margin: '0 0 12px' }}>
+            Olá, <span style={{ color: '#f59e0b' }}>{firstName}</span>
           </h2>
-
-          <p className="text-zinc-400 text-sm">
-            Ola, <span className="font-bold text-white">{user?.nickname || user?.name?.split(' ')[0]}</span>! Escolha a area que deseja acessar.
+          <p style={{ color: '#334155', fontSize: 14, fontWeight: 500, margin: 0 }}>
+            Escolha a área que deseja acessar
           </p>
         </div>
 
-        {/* System Cards - Large with background images */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+        {/* ── System Cards ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20, maxWidth: 900, margin: '0 auto 64px' }}>
           {systemsError && (
-            <div className="col-span-2 text-center py-8">
-              <p className="text-red-400 font-semibold text-sm mb-2">Erro ao carregar sistemas.</p>
-              <button
-                onClick={loadAll}
-                className="text-xs text-zinc-400 hover:text-white underline"
-              >
-                Tentar novamente
-              </button>
+            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '32px 0' }}>
+              <p style={{ color: '#ef4444', fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Erro ao carregar sistemas.</p>
+              <button onClick={loadAll} style={{ color: '#475569', fontSize: 12, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Tentar novamente</button>
             </div>
           )}
+
           {systems.map((system) => {
             const bgImage = SYSTEM_BACKGROUNDS[system.slug];
             const description = SYSTEM_DESCRIPTIONS[system.slug] || system.displayName;
-
             return (
               <button
                 key={system.slug}
                 onClick={() => navigate(`/system/${system.slug}`)}
-                className="group relative overflow-hidden rounded-2xl text-left transition-all duration-500 hover:shadow-2xl hover:scale-[1.02] cursor-pointer aspect-[16/10] min-h-[220px]"
+                style={{
+                  position: 'relative', overflow: 'hidden', borderRadius: 24,
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  aspectRatio: '16/10', minHeight: 220,
+                  cursor: 'pointer', textAlign: 'left',
+                  transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+                  background: '#0a0f1e',
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px) scale(1.01)';
+                  (e.currentTarget as HTMLElement).style.boxShadow = `0 24px 60px ${system.color}20`;
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.transform = 'none';
+                  (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+                }}
               >
-                {/* Background Image */}
-                {bgImage && (
-                  <img
-                    src={bgImage}
-                    alt=""
-                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                  />
+                {bgImage && <img src={bgImage} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s ease' }} />}
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.15) 100%)' }} />
+
+                {/* Top accent */}
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${system.color}80, transparent)` }} />
+
+                {/* Count badge */}
+                {system.tenantCount > 0 && (
+                  <div style={{ position: 'absolute', top: 14, right: 14, padding: '3px 10px', borderRadius: 999, background: `${system.color}cc`, backdropFilter: 'blur(8px)' }}>
+                    <span style={{ color: '#fff', fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                      {system.tenantCount} inscrito{system.tenantCount !== 1 ? 's' : ''}
+                    </span>
+                  </div>
                 )}
 
-                {/* Gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/20" />
-
-                {/* Colored accent on hover */}
-                <div
-                  className="absolute inset-0 opacity-0 group-hover:opacity-15 transition-opacity duration-500"
-                  style={{ backgroundColor: system.color }}
-                />
-
                 {/* Content */}
-                <div className="relative z-10 h-full flex flex-col justify-end p-6">
-                  {/* Badge with count */}
-                  {system.tenantCount > 0 && (
-                    <div className="absolute top-4 right-4">
-                      <span
-                        className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider text-white"
-                        style={{ backgroundColor: `${system.color}cc` }}
-                      >
-                        {system.tenantCount} {system.tenantCount === 1 ? 'inscrito' : 'inscritos'}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* System name */}
-                  <h3 className="text-2xl md:text-3xl font-black text-white uppercase italic tracking-tighter mb-1 drop-shadow-lg">
+                <div style={{ position: 'relative', zIndex: 10, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: 24 }}>
+                  <h3 style={{ color: '#fff', fontWeight: 900, fontSize: 28, fontStyle: 'italic', letterSpacing: -0.5, textTransform: 'uppercase', margin: '0 0 4px', textShadow: '0 2px 12px rgba(0,0,0,0.5)' }}>
                     {system.displayName}
                   </h3>
-
-                  {/* Description */}
-                  <p className="text-sm text-zinc-300 font-medium mb-3 drop-shadow">
-                    {description}
-                  </p>
-
-                  {/* CTA */}
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider text-white transition-all duration-300 group-hover:gap-3"
-                      style={{ backgroundColor: `${system.color}dd` }}
-                    >
-                      Acessar
-                      <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                    </span>
+                  <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, fontWeight: 500, margin: '0 0 16px' }}>{description}</p>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 12, background: `${system.color}cc`, width: 'fit-content', color: '#fff', fontWeight: 800, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                    Acessar
+                    <ChevronRight style={{ width: 14, height: 14 }} />
                   </div>
                 </div>
 
-                {/* Bottom accent line */}
-                <div
-                  className="absolute bottom-0 left-0 right-0 h-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ backgroundColor: system.color }}
-                />
+                {/* Bottom line */}
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${system.color}, transparent)`, opacity: 0, transition: 'opacity 0.3s' }} className="card-bottom-line" />
               </button>
             );
           })}
         </div>
 
-        {/* Mobile Apps Section */}
-        <div className="mt-14 max-w-4xl mx-auto">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="h-px flex-1 bg-zinc-800" />
-            <div className="flex items-center gap-2 text-zinc-500">
-              <Smartphone className="w-4 h-4" />
-              <span className="text-xs font-bold uppercase tracking-widest">Nossos Apps</span>
+        {/* ── Mobile Apps ── */}
+        <div style={{ maxWidth: 900, margin: '0 auto' }}>
+          {/* Divider */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28 }}>
+            <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.05)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Smartphone style={{ width: 14, height: 14, color: '#334155' }} />
+              <span style={{ color: '#1e293b', fontSize: 10, fontWeight: 800, letterSpacing: '0.25em', textTransform: 'uppercase' }}>Nossos Apps</span>
             </div>
-            <div className="h-px flex-1 bg-zinc-800" />
+            <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.05)' }} />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
             {mobileApps.map((app) => (
               <a
                 key={app.id}
                 href={app.apkUrl}
                 download
-                className="group relative overflow-hidden rounded-2xl transition-all duration-500 hover:shadow-2xl hover:scale-[1.02] min-h-[150px]"
+                style={{
+                  position: 'relative', overflow: 'hidden', borderRadius: 20,
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  minHeight: 160, display: 'block', textDecoration: 'none',
+                  transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+                  background: '#0a0f1e',
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLElement).style.transform = 'translateY(-3px)';
+                  (e.currentTarget as HTMLElement).style.boxShadow = `0 20px 50px ${app.color}18`;
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.transform = 'none';
+                  (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+                }}
               >
-                {/* Background Image */}
-                <img
-                  src={app.bgImage}
-                  alt=""
-                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                />
+                <img src={app.bgImage} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0.5) 60%, rgba(0,0,0,0.2))' }} />
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${app.color}80, transparent)` }} />
 
-                {/* Gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-black/40" />
-
-                {/* Colored accent on hover */}
-                <div
-                  className="absolute inset-0 opacity-0 group-hover:opacity-15 transition-opacity duration-500"
-                  style={{ backgroundColor: app.color }}
-                />
-
-                {/* Badge */}
-                <div className="absolute top-3 right-3 z-10">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider text-white bg-zinc-700/80 backdrop-blur-sm">
-                    Android
-                  </span>
+                {/* Android badge */}
+                <div style={{ position: 'absolute', top: 12, right: 12, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Android</span>
                 </div>
 
-                {/* Content */}
-                <div className="relative z-10 h-full flex flex-col justify-end p-5">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Smartphone className="w-4 h-4 text-white/70" />
-                    <h4 className="text-lg font-black text-white uppercase italic tracking-tight">
-                      {app.name}
-                    </h4>
+                <div style={{ position: 'relative', zIndex: 10, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: 18 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <Smartphone style={{ width: 13, height: 13, color: 'rgba(255,255,255,0.4)' }} />
+                    <h4 style={{ color: '#fff', fontWeight: 900, fontSize: 17, fontStyle: 'italic', letterSpacing: -0.3, textTransform: 'uppercase', margin: 0 }}>{app.name}</h4>
                   </div>
-
-                  <p className="text-xs text-zinc-300 font-medium mb-3">
-                    {app.description}
-                  </p>
-
-                  <span
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-white w-fit transition-all duration-300 group-hover:gap-2.5"
-                    style={{ backgroundColor: `${app.color}dd` }}
-                  >
-                    <Download className="w-3.5 h-3.5" />
+                  <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, margin: '0 0 14px' }}>{app.description}</p>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, background: `${app.color}cc`, width: 'fit-content', color: '#fff', fontWeight: 800, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                    <Download style={{ width: 12, height: 12 }} />
                     Baixar APK
-                  </span>
+                  </div>
                 </div>
-
-                {/* Bottom accent line */}
-                <div
-                  className="absolute bottom-0 left-0 right-0 h-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ backgroundColor: app.color }}
-                />
               </a>
             ))}
           </div>
 
           {mobileApps.length === 0 && (
-            <p className="text-center text-sm text-zinc-500 font-semibold mt-4">
-              Nenhum APK encontrado em /downloads.
-            </p>
+            <p style={{ textAlign: 'center', color: '#1e293b', fontSize: 12, fontWeight: 600, marginTop: 16 }}>Nenhum APK disponível.</p>
           )}
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-14">
-          <p className="text-zinc-700 text-xs font-bold uppercase tracking-widest">
-            Sistema Integrado de Gestao Esportiva
+        <div style={{ textAlign: 'center', marginTop: 64 }}>
+          <p style={{ color: '#0f172a', fontSize: 10, fontWeight: 800, letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+            Sistema Integrado de Gestão Esportiva
           </p>
         </div>
       </main>
 
-      {showMenu && (
-        <div className="fixed inset-0 z-30" onClick={() => setShowMenu(false)} />
-      )}
+      {showMenu && <div style={{ position: 'fixed', inset: 0, zIndex: 30 }} onClick={() => setShowMenu(false)} />}
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        button:focus { outline: none; }
+        a:focus { outline: none; }
+        @media (max-width: 640px) { .hidden-mobile { display: none; } }
+      `}</style>
     </div>
   );
 }
