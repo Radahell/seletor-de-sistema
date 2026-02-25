@@ -1,9 +1,17 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Trophy, Video, Building2, ArrowLeft, Search, ChevronRight,
-  Plus, Loader2, Clock, MessageCircle, X
+  ArrowLeft,
+  Building2,
+  ChevronRight,
+  Clock,
+  Loader2,
+  MessageCircle,
+  Plus,
+  Search,
+  Trophy, Video,
+  X
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api, { SystemWithTenants, TenantInfo } from '../services/api';
 
@@ -31,21 +39,21 @@ const SYSTEM_LABELS: Record<string, {
     plural: 'campeonatos',
     searchLabel: 'Buscar campeonato para jogar',
     createLabel: 'Cadastrar novo campeonato',
-    createDescription: 'Quer criar e gerenciar seu proprio campeonato? Entre em contato com nossa equipe para conhecer os planos e valores.',
+    createDescription: 'Quer criar e gerenciar seu próprio campeonato? Entre em contato com nossa equipe para conhecer os planos e valores.',
   },
   quadra: {
     singular: 'quadra',
     plural: 'quadras',
     searchLabel: 'Buscar quadra',
     createLabel: 'Cadastrar minha quadra',
-    createDescription: 'Quer gerenciar sua quadra esportiva com o Varzea Prime? Entre em contato para conhecer o sistema de gestao de quadras.',
+    createDescription: 'Quer gerenciar sua quadra esportiva com o Varzea Prime? Entre em contato para conhecer o sistema de gestão de quadras.',
   },
   lances: {
-    singular: 'camera',
-    plural: 'cameras',
-    searchLabel: 'Buscar camera',
-    createLabel: 'Contratar sistema de cameras',
-    createDescription: 'Quer ter cameras profissionais gravando seus jogos? Fale com nossa equipe para saber mais.',
+    singular: 'câmera',
+    plural: 'câmeras',
+    searchLabel: 'Buscar câmera',
+    createLabel: 'Contratar sistema de câmeras',
+    createDescription: 'Quer ter câmeras profissionais gravando seus jogos? Fale com nossa equipe para saber mais.',
   },
 };
 
@@ -84,9 +92,7 @@ export default function SystemAreaPage() {
       }
 
       if (availSystem) {
-        if (!mySystem) {
-          setSystemInfo({ displayName: availSystem.displayName, color: availSystem.color });
-        }
+        if (!mySystem) setSystemInfo({ displayName: availSystem.displayName, color: availSystem.color });
         const myIds = new Set(mySystem?.tenants.map(t => t.id) || []);
         setAvailableTenants(availSystem.tenants.filter(t => !myIds.has(t.id)));
       }
@@ -94,9 +100,7 @@ export default function SystemAreaPage() {
       if (!mySystem && !availSystem) {
         const systems = await api.getSystems();
         const sys = systems.find(s => s.slug === slug);
-        if (sys) {
-          setSystemInfo({ displayName: sys.displayName, color: sys.color });
-        }
+        if (sys) setSystemInfo({ displayName: sys.displayName, color: sys.color });
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -109,13 +113,10 @@ export default function SystemAreaPage() {
     localStorage.setItem('current_tenant', JSON.stringify(tenant));
     localStorage.setItem('tenant_slug', tenant.slug);
     localStorage.setItem('system_slug', slug || '');
-
     if (tenant.primaryColor) {
       localStorage.setItem('tenant_theme', JSON.stringify({ primaryColor: tenant.primaryColor }));
     }
-
     const hubToken = localStorage.getItem('auth_token') || '';
-
     if (slug === 'lances') {
       navigate('/lances');
     } else {
@@ -128,7 +129,7 @@ export default function SystemAreaPage() {
   const handleContactWhatsApp = () => {
     const systemName = systemInfo?.displayName || slug;
     const userName = user?.name || '';
-    const msg = `Ola! Sou ${userName} e tenho interesse em cadastrar um novo ${labels.singular} no Varzea Prime (${systemName}). Gostaria de saber mais sobre planos e valores.`;
+    const msg = `Olá! Sou ${userName} e tenho interesse em cadastrar um novo ${labels.singular} no Varzea Prime (${systemName}). Gostaria de saber mais sobre planos e valores.`;
     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
@@ -142,248 +143,285 @@ export default function SystemAreaPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center">
-        <Loader2 className="w-12 h-12 animate-spin" style={{ color }} />
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#09090f' }}>
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center border border-white/5" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <Loader2 className="w-6 h-6 animate-spin" style={{ color }} />
+          </div>
+          <p className="text-zinc-600 text-sm">Carregando...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
+    <div className="min-h-screen" style={{ background: 'linear-gradient(160deg, #09090f 0%, #0d0d16 100%)' }}>
+      {/* Ambient glow from system color */}
+      <div
+        className="fixed top-0 left-0 right-0 h-[50vh] pointer-events-none"
+        style={{ background: `radial-gradient(ellipse at 30% top, ${color}08 0%, transparent 65%)` }}
+      />
 
-      {/* Hero Header with background */}
+      {/* ── Hero ── */}
       <div className="relative overflow-hidden">
         {bgImage && (
-          <img src={bgImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <>
+            <img src={bgImage} alt="" className="absolute inset-0 w-full h-full object-cover scale-105" style={{ filter: 'blur(1px)' }} />
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(9,9,15,0.55) 0%, rgba(9,9,15,0.85) 60%, #09090f 100%)' }} />
+          </>
         )}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/80 to-zinc-950" />
+        {!bgImage && (
+          <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${color}12 0%, transparent 60%)` }} />
+        )}
 
-        <div className="relative z-10 px-4 pt-6 pb-10 max-w-4xl mx-auto">
+        <div className="relative z-10 px-4 pt-5 pb-12 max-w-4xl mx-auto">
+          {/* Back */}
           <button
             onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 text-zinc-300 hover:text-white transition-colors mb-8 text-sm"
+            className="inline-flex items-center gap-2 text-zinc-500 hover:text-white transition-colors mb-10 text-sm group"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
             Voltar
           </button>
 
-          <div className="flex items-center gap-5">
+          {/* Title row */}
+          <div className="flex items-end gap-5">
             <div
-              className="w-16 h-16 rounded-2xl flex items-center justify-center backdrop-blur-sm"
-              style={{ backgroundColor: `${color}30` }}
+              className="w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0 border"
+              style={{
+                background: `linear-gradient(135deg, ${color}25, ${color}10)`,
+                borderColor: `${color}30`,
+                boxShadow: `0 0 40px ${color}20`,
+              }}
             >
-              <Icon className="w-8 h-8 text-white" strokeWidth={2} />
+              <Icon className="w-8 h-8 text-white" strokeWidth={1.5} />
             </div>
-            <div>
-              <h1 className="text-3xl md:text-4xl font-black text-white uppercase italic tracking-tighter drop-shadow-lg">
-                {systemInfo?.displayName || slug}
-              </h1>
-              <p className="text-zinc-300 text-sm">
+
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] mb-1" style={{ color: `${color}99` }}>
                 {myTenants.length > 0
                   ? `${myTenants.length} ${myTenants.length === 1 ? labels.singular : labels.plural}`
-                  : `Nenhum ${labels.singular} inscrito`
-                }
+                  : `Nenhum ${labels.singular} inscrito`}
               </p>
+              <h1 className="text-3xl md:text-4xl font-black text-white uppercase italic tracking-tighter leading-none drop-shadow-2xl">
+                {systemInfo?.displayName || slug}
+              </h1>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="px-4 pb-12 max-w-4xl mx-auto -mt-2">
+      {/* ── Main Content ── */}
+      <div className="px-4 pb-16 max-w-4xl mx-auto -mt-4 relative z-10">
 
         {/* My Tenants */}
         {myTenants.length > 0 && (
           <section className="mb-8">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500 mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-600 mb-4">
               Meus {labels.plural}
-            </h3>
+            </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {myTenants.map((tenant) => (
                 <button
                   key={tenant.id}
                   onClick={() => handleEnterTenant(tenant)}
-                  className="group relative overflow-hidden p-6 rounded-2xl bg-zinc-800/50 border border-zinc-700/50 hover:border-zinc-600 hover:shadow-xl transition-all text-left"
+                  className="group relative overflow-hidden rounded-2xl border text-left transition-all duration-300 hover:-translate-y-0.5"
+                  style={{
+                    background: 'rgba(255,255,255,0.025)',
+                    borderColor: 'rgba(255,255,255,0.07)',
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLElement).style.borderColor = `${tenant.primaryColor || color}40`;
+                    (e.currentTarget as HTMLElement).style.boxShadow = `0 8px 32px ${tenant.primaryColor || color}12`;
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)';
+                    (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+                  }}
                 >
-                  <div className="flex items-start justify-between mb-4">
+                  {/* Top accent line on hover */}
+                  <div
+                    className="absolute top-0 left-0 right-0 h-px opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                    style={{ background: `linear-gradient(90deg, transparent, ${tenant.primaryColor || color}, transparent)` }}
+                  />
+
+                  <div className="p-5 flex items-center gap-4">
+                    {/* Logo / Initial */}
                     <div
-                      className="w-14 h-14 rounded-xl flex items-center justify-center text-xl font-black text-white shadow-lg"
-                      style={{ backgroundColor: tenant.primaryColor || color }}
+                      className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black text-white flex-shrink-0 overflow-hidden"
+                      style={{ background: tenant.primaryColor || color }}
                     >
                       {tenant.logoUrl ? (
-                        <img src={tenant.logoUrl} alt="" className="w-full h-full object-cover rounded-xl" />
+                        <img src={tenant.logoUrl} alt="" className="w-full h-full object-cover" />
                       ) : (
                         tenant.displayName.charAt(0)
                       )}
                     </div>
-                    <span className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-lg bg-zinc-700 text-zinc-400">
-                      {tenant.role || 'player'}
-                    </span>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-white text-sm leading-tight truncate">
+                        {tenant.displayName}
+                      </h4>
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-widest mt-1 inline-block px-1.5 py-0.5 rounded-md"
+                        style={{ color: `${tenant.primaryColor || color}cc`, background: `${tenant.primaryColor || color}15` }}
+                      >
+                        {tenant.role || 'player'}
+                      </span>
+                    </div>
+
+                    {/* Arrow */}
+                    <ChevronRight className="w-4 h-4 flex-shrink-0 text-zinc-700 group-hover:text-zinc-400 group-hover:translate-x-0.5 transition-all" />
                   </div>
-
-                  <h4 className="text-lg font-bold text-white group-hover:text-amber-400 transition-colors mb-1">
-                    {tenant.displayName}
-                  </h4>
-
-                  <div className="flex items-center gap-1 text-sm text-zinc-500 group-hover:text-zinc-400">
-                    Entrar
-                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </div>
-
-                  <div
-                    className="absolute bottom-0 left-0 right-0 h-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                    style={{ backgroundColor: tenant.primaryColor || color }}
-                  />
                 </button>
               ))}
             </div>
           </section>
         )}
 
-        {/* Action Buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-          {/* Search existing */}
+        {/* ── Action Cards ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+          {/* Search */}
           <button
             onClick={() => setShowDiscover(!showDiscover)}
-            className="group p-5 rounded-2xl border-2 border-dashed border-zinc-700 hover:border-zinc-500 transition-all flex items-center gap-4"
+            className="group p-5 rounded-2xl border border-dashed text-left transition-all duration-300 hover:-translate-y-0.5"
+            style={{
+              background: showDiscover ? `${color}06` : 'rgba(255,255,255,0.02)',
+              borderColor: showDiscover ? `${color}30` : 'rgba(255,255,255,0.08)',
+            }}
           >
             <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-all group-hover:scale-110"
-              style={{ backgroundColor: `${color}20` }}
+              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110"
+              style={{ background: `${color}15`, border: `1px solid ${color}20` }}
             >
-              <Search className="w-5 h-5" style={{ color }} />
+              <Search className="w-4 h-4" style={{ color }} />
             </div>
-            <div className="text-left">
-              <p className="text-sm font-bold text-zinc-300 group-hover:text-white transition-colors">
-                {labels.searchLabel}
-              </p>
-              <p className="text-xs text-zinc-600">
-                Encontre e participe como jogador
-              </p>
-            </div>
+            <p className="text-sm font-bold text-white mb-1">{labels.searchLabel}</p>
+            <p className="text-xs text-zinc-600">Encontre e participe como jogador</p>
           </button>
 
-          {/* Create new (contact admin) */}
+          {/* Create */}
           <button
             onClick={() => setShowContactModal(true)}
-            className="group p-5 rounded-2xl border-2 border-dashed border-amber-800/50 hover:border-amber-600/50 bg-amber-900/5 hover:bg-amber-900/10 transition-all flex items-center gap-4"
+            className="group p-5 rounded-2xl border border-dashed border-amber-800/40 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-amber-600/40"
+            style={{ background: 'rgba(245,158,11,0.03)' }}
           >
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-amber-500/10 transition-all group-hover:scale-110">
-              <Plus className="w-5 h-5 text-amber-500" />
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4 bg-amber-500/10 border border-amber-500/20 transition-transform group-hover:scale-110">
+              <Plus className="w-4 h-4 text-amber-400" />
             </div>
-            <div className="text-left">
-              <p className="text-sm font-bold text-amber-400 group-hover:text-amber-300 transition-colors">
-                {labels.createLabel}
-              </p>
-              <p className="text-xs text-zinc-600">
-                Fale com nossa equipe
-              </p>
-            </div>
+            <p className="text-sm font-bold text-amber-400 mb-1">{labels.createLabel}</p>
+            <p className="text-xs text-zinc-600">Fale com nossa equipe</p>
           </button>
         </div>
 
-        {/* Discover Section */}
+        {/* ── Discover Section ── */}
         {showDiscover && (
           <section className="mb-8">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500">
-                {labels.plural} disponiveis
-              </h3>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-600">
+                {labels.plural} disponíveis
+              </p>
               <button
                 onClick={() => setShowDiscover(false)}
-                className="text-xs text-zinc-500 hover:text-white transition-colors"
+                className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors flex items-center gap-1"
               >
+                <X className="w-3 h-3" />
                 Fechar
               </button>
             </div>
 
             {availableTenants.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {availableTenants.map((tenant) => (
                   <button
                     key={tenant.id}
                     onClick={() => navigate(`/discover/${tenant.slug}`)}
-                    className="group p-6 rounded-2xl bg-zinc-800/30 border border-dashed border-zinc-700 hover:border-zinc-500 transition-all text-left"
+                    className="group p-4 rounded-2xl border border-dashed border-white/6 hover:border-white/12 text-left transition-all"
+                    style={{ background: 'rgba(255,255,255,0.015)' }}
                   >
-                    <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
                       <div
-                        className="w-14 h-14 rounded-xl flex items-center justify-center text-xl font-black text-white opacity-60"
-                        style={{ backgroundColor: tenant.primaryColor || color }}
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-base font-black text-white/70 flex-shrink-0"
+                        style={{ background: `${tenant.primaryColor || color}25` }}
                       >
                         {tenant.displayName.charAt(0)}
                       </div>
-                    </div>
-
-                    <h4 className="text-lg font-bold text-zinc-400 group-hover:text-white transition-colors mb-1">
-                      {tenant.displayName}
-                    </h4>
-
-                    <div className="flex items-center gap-1 text-sm" style={{ color }}>
-                      <Plus className="w-4 h-4" />
-                      Participar
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-bold text-zinc-400 group-hover:text-white transition-colors truncate">
+                          {tenant.displayName}
+                        </h4>
+                        <span className="text-xs flex items-center gap-1 mt-0.5" style={{ color }}>
+                          <Plus className="w-3 h-3" />
+                          Participar
+                        </span>
+                      </div>
                     </div>
                   </button>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-10 rounded-2xl bg-zinc-800/20 border border-zinc-800">
-                <Clock className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
-                <p className="text-zinc-500 font-medium">
-                  Nenhum {labels.singular} disponivel no momento
-                </p>
+              <div className="text-center py-10 rounded-2xl border border-dashed border-white/5" style={{ background: 'rgba(255,255,255,0.01)' }}>
+                <Clock className="w-8 h-8 text-zinc-800 mx-auto mb-3" />
+                <p className="text-zinc-600 text-sm">Nenhum {labels.singular} disponível no momento</p>
               </div>
             )}
           </section>
         )}
 
-        {/* Empty state */}
+        {/* Empty hint */}
         {myTenants.length === 0 && !showDiscover && (
-          <div className="text-center mt-2">
-            <p className="text-zinc-600 text-sm">
-              Use os botoes acima para encontrar {labels.plural} ou cadastrar o seu
-            </p>
-          </div>
+          <p className="text-center text-zinc-700 text-xs mt-2">
+            Use os botões acima para encontrar {labels.plural} ou cadastrar o seu
+          </p>
         )}
       </div>
 
-      {/* Contact Modal */}
+      {/* ── Contact Modal ── */}
       {showContactModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowContactModal(false)} />
-          <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl max-w-md w-full p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+          <div
+            className="absolute inset-0 backdrop-blur-sm"
+            style={{ background: 'rgba(0,0,0,0.75)' }}
+            onClick={() => setShowContactModal(false)}
+          />
+          <div
+            className="relative w-full max-w-sm rounded-3xl border border-white/8 p-6 shadow-2xl"
+            style={{ background: 'linear-gradient(160deg, #111118, #0d0d14)' }}
+          >
             <button
               onClick={() => setShowContactModal(false)}
-              className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors"
+              className="absolute top-4 right-4 w-8 h-8 rounded-xl flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/5 transition-all"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
 
             <div className="text-center mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
-                <MessageCircle className="w-8 h-8 text-amber-500" />
+              <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto mb-4">
+                <MessageCircle className="w-7 h-7 text-amber-400" />
               </div>
-              <h3 className="text-xl font-black text-white uppercase italic tracking-tight mb-2">
+              <h3 className="text-lg font-black text-white uppercase italic tracking-tight mb-2">
                 {labels.createLabel}
               </h3>
-              <p className="text-sm text-zinc-400 leading-relaxed">
+              <p className="text-sm text-zinc-500 leading-relaxed">
                 {labels.createDescription}
               </p>
             </div>
 
-            <div className="space-y-3">
-              <button
-                onClick={handleContactWhatsApp}
-                className="w-full px-4 py-3 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors"
-              >
-                <MessageCircle className="w-5 h-5" />
-                Falar pelo WhatsApp
-              </button>
+            <button
+              onClick={handleContactWhatsApp}
+              className="w-full py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 text-white transition-all hover:opacity-90"
+              style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)', boxShadow: '0 4px 20px rgba(22,163,74,0.25)' }}
+            >
+              <MessageCircle className="w-4 h-4" />
+              Falar pelo WhatsApp
+            </button>
 
-              <p className="text-center text-zinc-600 text-xs">
-                Ou envie um email para <span className="text-zinc-400">contato@varzeaprime.com.br</span>
-              </p>
-            </div>
+            <p className="text-center text-zinc-700 text-xs mt-4">
+              Ou envie um e-mail para{' '}
+              <span className="text-zinc-500">contato@varzeaprime.com.br</span>
+            </p>
           </div>
         </div>
       )}
