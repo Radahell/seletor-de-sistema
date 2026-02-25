@@ -107,6 +107,32 @@ Depois aplique:
 docker compose up -d --force-recreate api
 ```
 
+
+## Troubleshooting rápido (frontend não atualiza)
+
+Se você alterou `frontend/src/*` e nada mudou na tela, normalmente é cache no navegador/proxy **ou** acesso ao servidor errado.
+
+1. Rebuild + checks do frontend:
+
+```bash
+./scripts/refresh-frontend.sh --no-cache
+```
+
+2. Se quiser confirmar também o domínio público:
+
+```bash
+./scripts/refresh-frontend.sh --no-cache --url https://varzeaprime.com.br
+```
+
+3. Validações-chave:
+   - Compare o nome do bundle (`index-*.js`) mostrado pelo script com o carregado no navegador.
+   - Em `/dashboard`, resposta `304` é normal quando o navegador reaproveita cache.
+   - Abra DevTools > Network e marque `Disable cache` antes de recarregar.
+   - `/dashboard` é SPA do seletor; backend não recebe essa rota (ele atende `/api/*` e `/health`).
+   - `/jogador/*`, `/quadra/*`, `/lances/*` são sistemas externos.
+
+> Em produção, pode existir cache em CDN/reverse-proxy mesmo após rebuild local.
+
 ## Rotas da API
 
 - `GET /api/systems`
