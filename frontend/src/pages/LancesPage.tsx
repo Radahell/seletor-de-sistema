@@ -1,16 +1,13 @@
 import {
   ArrowLeft,
-  Camera,
   ChevronRight,
   Clock,
   Download,
-  ExternalLink,
   Eye,
   Film,
   Loader2,
   Play,
   RefreshCw,
-  Smartphone,
   Trash2,
   Video,
   Wifi,
@@ -462,6 +459,189 @@ function RecordingCard({
   );
 }
 
+// ─── Live Session Player (double-buffered chunk playback) ──────────────────
+function LiveSessionPlayer({ sessionId, token }: { sessionId: string; token: string }) {
+  const [cameras, setCameras] = useState<string[]>([]);
+  const [bufferingMap, setBufferingMap] = useState<Record<string, boolean>>({});
+  const videoRefsA = useRef<Record<string, HTMLVideoElement | null>>({});
+  const videoRefsB = useRef<Record<string, HTMLVideoElement | null>>({});
+
+  // Detect active cameras
+  useEffect(() => {
+    let active = true;
+    const detect = async () => {
+      const found: string[] = [];
+      for (const camId of ['cam_a', 'cam_b']) {
+        try {
+          const resp = await fetch(`${SCL_API}/api/streams/${sessionId}/live-info?camera_id=${camId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.mode !== 'none') found.push(camId);
+          }
+        } catch { /* ignore */ }
+      }
+      if (active && found.length > 0) {
+        setCameras(prev => {
+          if (prev.length === found.length && prev.every((c, i) => c === found[i])) return prev;
+          return found;
+        });
+      }
+    };
+    detect();
+    const iv = setInterval(detect, 15000);
+    return () => { active = false; clearInterval(iv); };
+  }, [sessionId, token]);
+
+  // Start fetch + playback loops for each detected camera
+  useEffect(() => {
+    if (cameras.length === 0) return;
+    let running = true;
+    const blobUrls: string[] = [];
+    const queues: Record<string, { url: string; ts: number }[]> = {};
+    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+    cameras.forEach(camId => {
+      queues[camId] = [];
+      setBufferingMap(prev => ({ ...prev, [camId]: true }));
+
+      // ── Chunk fetch loop ──
+      (async () => {
+        let after = 1; // start with 1 → server returns oldest available chunk
+        let filling = true;
+        while (running) {
+          try {
+            if ((queues[camId] || []).length >= 6) { await sleep(3000); continue; }
+            const resp = await fetch(
+              `${SCL_API}/api/streams/${sessionId}/latest-chunk?camera_id=${camId}&after=${after}`,
+              { headers: { Authorization: `Bearer ${token}` } },
+            );
+            if (resp.status === 200) {
+              const ts = parseInt(resp.headers.get('X-Chunk-Timestamp') || '0');
+              const blob = await resp.blob();
+              const url = URL.createObjectURL(blob);
+              blobUrls.push(url);
+              queues[camId].push({ url, ts });
+              after = ts;
+              if (filling && queues[camId].length >= 2) {
+                filling = false;
+                setBufferingMap(prev => ({ ...prev, [camId]: false }));
+              }
+              if (filling) continue; // fetch next immediately during initial fill
+            } else if (filling) {
+              await sleep(1000);
+              continue;
+            }
+          } catch { /* ignore */ }
+          await sleep(filling ? 500 : 3000);
+        }
+      })();
+
+      // ── Chunk playback loop (double-buffered) ──
+      (async () => {
+        let useA = true;
+        // Wait for initial buffer
+        while (running && (queues[camId] || []).length < 2) await sleep(300);
+
+        while (running) {
+          const q = queues[camId];
+          if (!q || q.length === 0) {
+            setBufferingMap(prev => ({ ...prev, [camId]: true }));
+            await sleep(300);
+            continue;
+          }
+          setBufferingMap(prev => ({ ...prev, [camId]: false }));
+
+          const chunk = q.shift()!;
+          const el = useA ? videoRefsA.current[camId] : videoRefsB.current[camId];
+          const other = useA ? videoRefsB.current[camId] : videoRefsA.current[camId];
+          if (!el) { URL.revokeObjectURL(chunk.url); await sleep(200); continue; }
+
+          el.src = chunk.url;
+
+          // Wait for canplay
+          await new Promise<void>(resolve => {
+            let resolved = false;
+            const done = () => { if (resolved) return; resolved = true; resolve(); };
+            el.addEventListener('canplay', done, { once: true });
+            el.addEventListener('error', done, { once: true });
+            el.load();
+            setTimeout(done, 5000);
+          });
+
+          // Show current, hide other
+          el.style.opacity = '1';
+          el.style.zIndex = '2';
+          if (other) { other.style.opacity = '0'; other.style.zIndex = '1'; }
+
+          try { await el.play(); } catch { /* ignore */ }
+
+          // Wait for ended
+          await new Promise<void>(resolve => {
+            let resolved = false;
+            const done = () => { if (resolved) return; resolved = true; resolve(); };
+            el.addEventListener('ended', done, { once: true });
+            el.addEventListener('error', done, { once: true });
+            setTimeout(done, 15000);
+          });
+
+          URL.revokeObjectURL(chunk.url);
+          useA = !useA;
+        }
+      })();
+    });
+
+    return () => {
+      running = false;
+      blobUrls.forEach(u => URL.revokeObjectURL(u));
+    };
+  }, [cameras, sessionId, token]);
+
+  // No cameras detected yet → loading state
+  if (cameras.length === 0) {
+    return (
+      <div className="aspect-video bg-zinc-900 relative flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-zinc-600 animate-spin" />
+        <p className="absolute bottom-3 text-xs text-zinc-600">Conectando câmeras...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="aspect-video bg-black relative overflow-hidden flex">
+      {cameras.map(camId => (
+        <div key={camId} className="relative h-full" style={{ width: cameras.length > 1 ? '50%' : '100%' }}>
+          <video
+            ref={el => { videoRefsA.current[camId] = el; }}
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ opacity: 0, zIndex: 1 }}
+          />
+          <video
+            ref={el => { videoRefsB.current[camId] = el; }}
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ opacity: 0, zIndex: 1 }}
+          />
+          {bufferingMap[camId] && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10">
+              <Loader2 className="w-6 h-6 text-white animate-spin" />
+              <p className="text-xs text-zinc-400 mt-2">Carregando...</p>
+            </div>
+          )}
+        </div>
+      ))}
+      <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-500/30">
+        <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+        AO VIVO
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────
 export default function LancesPage() {
   const navigate = useNavigate();
@@ -620,23 +800,6 @@ export default function LancesPage() {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 pt-6 space-y-4">
-        <a
-          href={token ? `${SCL_API}/camera/?hub_token=${encodeURIComponent(token)}` : '#'}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`flex items-center gap-3 p-3.5 rounded-2xl no-underline transition-all group border border-emerald-500/20 hover:border-emerald-400/40 ${!token ? 'opacity-50 pointer-events-none' : ''}`}
-          style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(5,150,105,0.05))' }}
-        >
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center border border-emerald-500/20 flex-shrink-0">
-            <Smartphone className="w-5 h-5 text-emerald-400" />
-          </div>
-          <div className="flex-1">
-            <p className="text-white font-semibold text-sm leading-tight">Usar Celular como Câmera</p>
-            <p className="text-emerald-500/70 text-xs mt-0.5">Toque para iniciar sua câmera pessoal</p>
-          </div>
-          <ExternalLink className="w-4 h-4 text-emerald-500/40 group-hover:text-emerald-400 transition-colors" />
-        </a>
-
         <div className="flex gap-1 p-1 rounded-2xl border border-white/5" style={{ background: 'rgba(255,255,255,0.02)' }}>
           {tabs.map(tab => {
             const Icon = tab.icon;
@@ -738,31 +901,12 @@ export default function LancesPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {sessions.map(session => (
                     <div key={session.id} className="rounded-2xl border border-white/5 overflow-hidden hover:border-red-500/20 transition-all" style={{ background: 'rgba(255,255,255,0.02)' }}>
-                      <div className="aspect-video bg-zinc-900 relative flex items-center justify-center">
-                        <Camera className="w-16 h-16 text-zinc-800" />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-24 h-24 rounded-full bg-red-500/5 animate-ping" />
-                        </div>
-                        <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-500/30">
-                          <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                          AO VIVO
-                        </div>
-                      </div>
+                      {token && <LiveSessionPlayer sessionId={session.id} token={token} />}
                       <div className="p-4">
                         <h3 className="font-bold text-white text-sm">{(session as any).field_name || session.device_name || 'Sessão ao vivo'}</h3>
                         <p className="text-xs text-zinc-600 mt-1">
                           {((session as any).cameras_connected ?? 0)} câmera{((session as any).cameras_connected ?? 0) !== 1 ? 's' : ''} · Desde {formatDate(session.started_at)}
                         </p>
-                        <a
-                          href={`${SCL_API}/viewer/?session=${session.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-3 w-full py-2.5 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 no-underline transition-all border border-red-500/30 hover:border-red-400/50"
-                          style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', boxShadow: '0 4px 20px rgba(239,68,68,0.2)' }}
-                        >
-                          <Play className="w-4 h-4" />
-                          Assistir Ao Vivo
-                        </a>
                       </div>
                     </div>
                   ))}
