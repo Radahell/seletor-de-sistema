@@ -48,6 +48,88 @@ interface SessionInfo {
 
 type TabType = 'live' | 'clips' | 'recordings';
 
+/** Inline live preview for a session camera - auto-plays latest MP4 chunk or JPEG frame */
+function LivePreview({ sessionId, cameraId }: { sessionId: string; cameraId: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [mode, setMode] = useState<'none' | 'jpeg' | 'video'>('none');
+  const lastChunkTs = useRef('0');
+  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+
+  useEffect(() => {
+    let active = true;
+
+    const poll = async () => {
+      if (!active) return;
+      try {
+        // Check what's available
+        const infoResp = await fetch(`${SCL_API}/api/streams/${sessionId}/live-info?camera_id=${cameraId}&_t=${Date.now()}`);
+        if (!infoResp.ok) { setMode('none'); return; }
+        const info = await infoResp.json();
+
+        if (info.mode === 'video') {
+          setMode('video');
+          const chunkResp = await fetch(`${SCL_API}/api/streams/${sessionId}/latest-chunk?camera_id=${cameraId}&after=${lastChunkTs.current}&_t=${Date.now()}`);
+          if (chunkResp.ok && videoRef.current) {
+            const ts = chunkResp.headers.get('X-Chunk-Timestamp') || '0';
+            if (ts !== lastChunkTs.current) {
+              const blob = await chunkResp.blob();
+              const url = URL.createObjectURL(blob);
+              const prev = videoRef.current.dataset.blobUrl;
+              if (prev) URL.revokeObjectURL(prev);
+              videoRef.current.dataset.blobUrl = url;
+              videoRef.current.src = url;
+              videoRef.current.play().catch(() => {});
+              lastChunkTs.current = ts;
+            }
+          }
+        } else if (info.mode === 'jpeg') {
+          setMode('jpeg');
+          const frameResp = await fetch(`${SCL_API}/api/streams/${sessionId}/frame.jpg?camera_id=${cameraId}&_t=${Date.now()}`);
+          if (frameResp.ok && imgRef.current) {
+            const blob = await frameResp.blob();
+            const url = URL.createObjectURL(blob);
+            const prev = imgRef.current.dataset.blobUrl;
+            if (prev) URL.revokeObjectURL(prev);
+            imgRef.current.dataset.blobUrl = url;
+            imgRef.current.src = url;
+          }
+        } else {
+          setMode('none');
+        }
+      } catch {
+        setMode('none');
+      }
+    };
+
+    poll();
+    intervalRef.current = setInterval(poll, mode === 'jpeg' ? 1000 : 5000);
+
+    return () => {
+      active = false;
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (videoRef.current?.dataset.blobUrl) URL.revokeObjectURL(videoRef.current.dataset.blobUrl);
+      if (imgRef.current?.dataset.blobUrl) URL.revokeObjectURL(imgRef.current.dataset.blobUrl);
+    };
+  }, [sessionId, cameraId, mode]);
+
+  return (
+    <div className="aspect-video bg-zinc-800 relative flex items-center justify-center overflow-hidden">
+      {mode === 'video' && (
+        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+      )}
+      {mode === 'jpeg' && (
+        <img ref={imgRef} alt="Preview" className="w-full h-full object-cover" />
+      )}
+      {mode === 'none' && <Camera className="w-16 h-16 text-zinc-700" />}
+      <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/90 text-white text-xs font-bold">
+        <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+        AO VIVO
+      </div>
+    </div>
+  );
+}
+
 async function sclFetch<T>(endpoint: string, token: string): Promise<T> {
   const response = await fetch(`${SCL_API}${endpoint}`, {
     headers: {
@@ -504,14 +586,11 @@ export default function LancesPage() {
                         key={session.id}
                         className="rounded-2xl border border-zinc-800 bg-zinc-900/50 overflow-hidden"
                       >
-                        {/* Live indicator */}
-                        <div className="aspect-video bg-zinc-800 relative flex items-center justify-center">
-                          <Camera className="w-16 h-16 text-zinc-700" />
-                          <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/90 text-white text-xs font-bold">
-                            <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                            AO VIVO
-                          </div>
-                        </div>
+                        {/* Live preview (auto-detects JPEG or MP4 chunks) */}
+                        <LivePreview
+                          sessionId={session.id}
+                          cameraId={((session as any).connected_cameras ?? [session.channel || 'cam_a'])[0]}
+                        />
 
                         <div className="p-4">
                           <h3 className="font-bold text-white">{(session as any).field_name || session.device_name || 'Sessão ao vivo'}</h3>
