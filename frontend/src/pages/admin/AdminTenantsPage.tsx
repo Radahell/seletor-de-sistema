@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Server, Globe, Trash2, RefreshCw, CheckCircle, AlertCircle, Database, Pencil, Users, X, Shield, ChevronDown, ChevronUp, Plus, Layers, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Server, Globe, Trash2, RefreshCw, CheckCircle, AlertCircle, Database, Pencil, Users, X, Shield, ChevronDown, ChevronUp, Plus, Layers, Eye, EyeOff, UserCheck, UserX, Clock, MessageSquare } from 'lucide-react';
 import api from '../../services/api';
 
 interface SystemType {
@@ -22,6 +22,8 @@ interface Tenant {
   databaseHost?: string;
   systemName: string;
   isActive: boolean;
+  allowRegistration: boolean;
+  primaryColor: string;
 }
 
 interface TenantMember {
@@ -32,6 +34,19 @@ interface TenantMember {
   role: string;
   isActive: boolean;
   joinedAt?: string;
+}
+
+interface AccessRequest {
+  id: number;
+  message?: string;
+  createdAt?: string;
+  user: {
+    id: number;
+    name: string;
+    nickname?: string;
+    email: string;
+    avatarUrl?: string;
+  };
 }
 
 const INPUT_CLS = 'w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-yellow-500 focus:outline-none';
@@ -69,6 +84,12 @@ export default function AdminTenantsPage() {
   const [expandedTenant, setExpandedTenant] = useState<number | null>(null);
   const [members, setMembers] = useState<TenantMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+
+  // Access requests state
+  const [requests, setRequests] = useState<AccessRequest[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [requestCounts, setRequestCounts] = useState<Record<number, number>>({});
+  const [processingRequest, setProcessingRequest] = useState<number | null>(null);
 
   const [form, setForm] = useState({
     displayName: '',
@@ -171,6 +192,7 @@ export default function AdminTenantsPage() {
     try {
       const data = await api.request<Tenant[]>('/api/super-admin/tenants');
       setTenants(data);
+      fetchAllRequestCounts(data);
     } catch (err) {
       console.error('Erro ao listar tenants', err);
     } finally {
@@ -191,13 +213,70 @@ export default function AdminTenantsPage() {
     }
   };
 
+  const fetchRequests = async (tenantId: number) => {
+    setLoadingRequests(true);
+    try {
+      const data = await api.request<AccessRequest[]>(`/api/super-admin/tenants/${tenantId}/requests`);
+      setRequests(data);
+      setRequestCounts((prev) => ({ ...prev, [tenantId]: data.length }));
+    } catch (err) {
+      console.error('Erro ao listar pedidos', err);
+      setRequests([]);
+    } finally {
+      setLoadingRequests(false);
+    }
+  };
+
+  const fetchAllRequestCounts = async (tenantsList: Tenant[]) => {
+    const counts: Record<number, number> = {};
+    await Promise.all(
+      tenantsList.map(async (t) => {
+        try {
+          const data = await api.request<AccessRequest[]>(`/api/super-admin/tenants/${t.id}/requests`);
+          counts[t.id] = data.length;
+        } catch {
+          counts[t.id] = 0;
+        }
+      })
+    );
+    setRequestCounts(counts);
+  };
+
+  const handleApproveRequest = async (tenantId: number, requestId: number) => {
+    setProcessingRequest(requestId);
+    try {
+      await api.request(`/api/super-admin/tenants/${tenantId}/requests/${requestId}/approve`, { method: 'POST' });
+      showStatus('success', 'Solicitação aprovada!');
+      await fetchRequests(tenantId);
+      await fetchMembers(tenantId);
+    } catch (err: any) {
+      showStatus('error', err.message || 'Erro ao aprovar');
+    } finally {
+      setProcessingRequest(null);
+    }
+  };
+
+  const handleRejectRequest = async (tenantId: number, requestId: number) => {
+    setProcessingRequest(requestId);
+    try {
+      await api.request(`/api/super-admin/tenants/${tenantId}/requests/${requestId}/reject`, { method: 'POST', body: JSON.stringify({}) });
+      showStatus('success', 'Solicitação rejeitada');
+      await fetchRequests(tenantId);
+    } catch (err: any) {
+      showStatus('error', err.message || 'Erro ao rejeitar');
+    } finally {
+      setProcessingRequest(null);
+    }
+  };
+
   const handleToggleMembers = async (tenantId: number) => {
     if (expandedTenant === tenantId) {
       setExpandedTenant(null);
       setMembers([]);
+      setRequests([]);
     } else {
       setExpandedTenant(tenantId);
-      await fetchMembers(tenantId);
+      await Promise.all([fetchMembers(tenantId), fetchRequests(tenantId)]);
     }
   };
 
@@ -261,8 +340,8 @@ export default function AdminTenantsPage() {
     setEditingTenant(tenant);
     setEditForm({
       displayName: tenant.displayName,
-      primaryColor: '#ef4444',
-      allowRegistration: false,
+      primaryColor: tenant.primaryColor || '#ef4444',
+      allowRegistration: tenant.allowRegistration ?? false,
     });
   };
 
@@ -596,6 +675,7 @@ export default function AdminTenantsPage() {
                   <th className="p-4">ID</th>
                   <th className="p-4">Cliente</th>
                   <th className="p-4">Sistema</th>
+                  <th className="p-4">Acesso</th>
                   <th className="p-4">Banco de Dados</th>
                   <th className="p-4 text-right">Acoes</th>
                 </tr>
@@ -619,14 +699,28 @@ export default function AdminTenantsPage() {
                           {t.systemName}
                         </span>
                       </td>
+                      <td className="p-4">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          t.allowRegistration
+                            ? 'text-green-400 bg-green-500/10 border border-green-500/30'
+                            : 'text-yellow-400 bg-yellow-500/10 border border-yellow-500/30'
+                        }`}>
+                          {t.allowRegistration ? 'Livre' : 'Aprovação'}
+                        </span>
+                      </td>
                       <td className="p-4 text-zinc-400 font-mono text-xs">{t.databaseName}</td>
                       <td className="p-4 text-right flex items-center justify-end gap-1">
                         <button
                           onClick={() => handleToggleMembers(t.id)}
-                          className="text-blue-400 hover:bg-blue-500/10 p-2 rounded transition-colors"
-                          title="Ver Membros"
+                          className="relative text-blue-400 hover:bg-blue-500/10 p-2 rounded transition-colors"
+                          title="Ver Membros & Pedidos"
                         >
                           {expandedTenant === t.id ? <ChevronUp className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+                          {(requestCounts[t.id] || 0) > 0 && (
+                            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
+                              {requestCounts[t.id]}
+                            </span>
+                          )}
                         </button>
                         <button
                           onClick={() => handleEdit(t)}
@@ -645,10 +739,64 @@ export default function AdminTenantsPage() {
                       </td>
                     </tr>
 
-                    {/* Members Expansion */}
+                    {/* Members & Requests Expansion */}
                     {expandedTenant === t.id && (
                       <tr key={`${t.id}-members`}>
-                        <td colSpan={5} className="bg-zinc-950 p-4">
+                        <td colSpan={6} className="bg-zinc-950 p-4 space-y-4">
+                          {/* ── Pedidos de Acesso Pendentes ── */}
+                          {loadingRequests ? (
+                            <div className="flex justify-center py-2">
+                              <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />
+                            </div>
+                          ) : requests.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2 text-yellow-500">
+                                <Clock className="w-3.5 h-3.5" />
+                                Pedidos de Acesso ({requests.length})
+                              </p>
+                              {requests.map((r) => (
+                                <div key={r.id} className="flex items-center gap-3 bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-white text-sm font-medium truncate">{r.user.name || r.user.email}</p>
+                                    <p className="text-zinc-500 text-xs truncate">{r.user.email}</p>
+                                    {r.message && (
+                                      <p className="text-zinc-400 text-xs mt-1 flex items-start gap-1">
+                                        <MessageSquare className="w-3 h-3 mt-0.5 shrink-0" />
+                                        <span className="italic">"{r.message}"</span>
+                                      </p>
+                                    )}
+                                    {r.createdAt && (
+                                      <p className="text-zinc-600 text-[10px] mt-1">
+                                        {new Date(r.createdAt).toLocaleDateString('pt-BR')} {new Date(r.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      onClick={() => handleApproveRequest(t.id, r.id)}
+                                      disabled={processingRequest === r.id}
+                                      className="flex items-center gap-1 px-2.5 py-1.5 bg-green-500/10 text-green-400 border border-green-500/30 rounded-lg text-xs font-semibold hover:bg-green-500/20 transition-colors disabled:opacity-50"
+                                      title="Aprovar"
+                                    >
+                                      {processingRequest === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3.5 h-3.5" />}
+                                      Aprovar
+                                    </button>
+                                    <button
+                                      onClick={() => handleRejectRequest(t.id, r.id)}
+                                      disabled={processingRequest === r.id}
+                                      className="flex items-center gap-1 px-2.5 py-1.5 bg-red-500/10 text-red-400 border border-red-500/30 rounded-lg text-xs font-semibold hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                                      title="Rejeitar"
+                                    >
+                                      <UserX className="w-3.5 h-3.5" />
+                                      Rejeitar
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* ── Membros ── */}
                           {loadingMembers ? (
                             <div className="flex justify-center py-4">
                               <Loader2 className="w-5 h-5 text-yellow-500 animate-spin" />

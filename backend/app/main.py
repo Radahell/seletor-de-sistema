@@ -540,6 +540,7 @@ def list_all_tenants_admin():
     try:
         sql = """
         SELECT t.id, t.slug, t.display_name, t.database_name, t.database_host, t.is_active,
+               t.allow_registration, t.primary_color,
                s.display_name as system_name
         FROM tenants t
         JOIN systems s ON t.system_id = s.id
@@ -558,6 +559,8 @@ def list_all_tenants_admin():
                     "databaseHost": r.get("database_host"),
                     "systemName": r["system_name"],
                     "isActive": bool(r["is_active"]),
+                    "allowRegistration": bool(r.get("allow_registration", False)),
+                    "primaryColor": r.get("primary_color") or "#ef4444",
                 }
             )
 
@@ -877,6 +880,125 @@ def delete_system(system_id: int):
 
         execute_sql("UPDATE systems SET is_active = 0 WHERE id = :id", {"id": system_id})
         return jsonify({"message": f"Sistema '{sys_row['display_name']}' desativado"})
+
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+        return jsonify({"error": safe_db_error(e)}), 500
+
+
+# ------------------------------------------------------------
+# Super-Admin: Pedidos de Acesso (access requests)
+# ------------------------------------------------------------
+@app.get("/api/super-admin/tenants/<int:tenant_id>/requests")
+@token_required
+def list_tenant_requests_admin(tenant_id: int):
+    """Lista solicitações pendentes de um tenant (super admin)."""
+    try:
+        requests_rows = fetch_all(
+            """
+            SELECT
+                r.id, r.message, r.status, r.created_at,
+                u.id AS user_id, u.name, u.nickname, u.email, u.avatar_url
+            FROM user_tenant_requests r
+            INNER JOIN users u ON r.user_id = u.id
+            WHERE r.tenant_id = :tenant_id AND r.status = 'pending'
+            ORDER BY r.created_at ASC
+            """,
+            {"tenant_id": tenant_id},
+        )
+
+        return jsonify([
+            {
+                "id": r["id"],
+                "message": r.get("message"),
+                "createdAt": r["created_at"].isoformat() if r.get("created_at") else None,
+                "user": {
+                    "id": r["user_id"],
+                    "name": r["name"],
+                    "nickname": r.get("nickname"),
+                    "email": r["email"],
+                    "avatarUrl": r.get("avatar_url"),
+                },
+            }
+            for r in requests_rows
+        ])
+
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+        return jsonify({"error": safe_db_error(e)}), 500
+
+
+@app.post("/api/super-admin/tenants/<int:tenant_id>/requests/<int:request_id>/approve")
+@token_required
+def approve_request_admin(tenant_id: int, request_id: int):
+    """Aprovar solicitação de acesso (super admin)."""
+    try:
+        req = fetch_one(
+            """
+            SELECT r.*, u.name AS user_name
+            FROM user_tenant_requests r
+            INNER JOIN users u ON r.user_id = u.id
+            WHERE r.id = :id AND r.tenant_id = :tenant_id AND r.status = 'pending'
+            """,
+            {"id": request_id, "tenant_id": tenant_id},
+        )
+        if not req:
+            return jsonify({"error": "Solicitação não encontrada ou já processada"}), 404
+
+        execute_sql(
+            """
+            UPDATE user_tenant_requests
+            SET status = 'approved', responded_at = NOW()
+            WHERE id = :id
+            """,
+            {"id": request_id},
+        )
+
+        execute_sql(
+            """
+            INSERT INTO user_tenants (user_id, tenant_id, role, approved_at)
+            VALUES (:user_id, :tenant_id, 'player', NOW())
+            ON DUPLICATE KEY UPDATE
+                is_active = TRUE, left_at = NULL, approved_at = NOW()
+            """,
+            {"user_id": req["user_id"], "tenant_id": tenant_id},
+        )
+
+        return jsonify({"message": f"{req['user_name']} foi aprovado!"})
+
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+        return jsonify({"error": safe_db_error(e)}), 500
+
+
+@app.post("/api/super-admin/tenants/<int:tenant_id>/requests/<int:request_id>/reject")
+@token_required
+def reject_request_admin(tenant_id: int, request_id: int):
+    """Rejeitar solicitação de acesso (super admin)."""
+    try:
+        data = request.get_json(silent=True) or {}
+        reason = (data.get("reason") or "").strip()
+
+        result = fetch_one(
+            "SELECT id FROM user_tenant_requests WHERE id = :id AND tenant_id = :tid AND status = 'pending'",
+            {"id": request_id, "tid": tenant_id},
+        )
+        if not result:
+            return jsonify({"error": "Solicitação não encontrada ou já processada"}), 404
+
+        execute_sql(
+            """
+            UPDATE user_tenant_requests
+            SET status = 'rejected', response_message = :reason, responded_at = NOW()
+            WHERE id = :id
+            """,
+            {"id": request_id, "reason": reason},
+        )
+
+        return jsonify({"message": "Solicitação rejeitada"})
 
     except Exception as e:
         if ENV == "dev":
