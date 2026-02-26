@@ -39,9 +39,15 @@ services:
       FLASK_APP: app.main:app
       FLASK_ENV: ${FLASK_ENV}
       SECRET_KEY: ${SECRET_KEY}
+      JWT_SECRET: ${JWT_SECRET}
       PYTHONPATH: /app
       SELETOR_API_PORT: ${SELETOR_API_PORT:-22012}
       DOWNLOADS_DIR: ${DOWNLOADS_DIR:-/downloads}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-}
+      TENANT_DB_HOST: ${TENANT_DB_HOST:-varzea-prime-db}
+      TENANT_DB_PORT: ${TENANT_DB_PORT:-3306}
+      TENANT_DB_USER: ${TENANT_DB_USER:-root}
+      TENANT_DB_PASS: ${TENANT_DB_PASS:-}
     volumes:
       - ./backend/uploads:/uploads
       - ./backend:/app
