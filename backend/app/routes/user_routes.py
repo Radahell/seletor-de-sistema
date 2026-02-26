@@ -146,6 +146,49 @@ def get_users_by_tenant(slug: str):
         return jsonify({"error": safe_db_error(e)}), 500
 
 
+@user_bp.get("/all-active")
+@_service_auth_required
+def get_all_active_users():
+    """Retorna TODOS os usuarios ativos do hub (inter-service).
+
+    Usado por sistemas do tipo 'quadra' onde todos os usuarios sao
+    clientes automaticamente (sem necessidade de vinculo via user_tenants).
+
+    Query params:
+    - limit: max results (default 500, max 2000)
+    - offset: pagination offset (default 0)
+    """
+    try:
+        limit = min(2000, max(1, int(request.args.get("limit", 500))))
+        offset = max(0, int(request.args.get("offset", 0)))
+
+        rows = fetch_all(
+            """
+            SELECT * FROM users
+            WHERE is_active = TRUE
+            ORDER BY name
+            LIMIT :lim OFFSET :off
+            """,
+            {"lim": limit, "off": offset},
+        )
+
+        total_row = fetch_one("SELECT COUNT(*) AS cnt FROM users WHERE is_active = TRUE")
+        total = total_row["cnt"] if total_row else len(rows)
+
+        users = []
+        for r in rows:
+            dto = _user_profile_dto(r)
+            dto["role"] = "client"
+            users.append(dto)
+
+        return jsonify({"users": users, "total": total})
+
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+        return jsonify({"error": safe_db_error(e)}), 500
+
+
 @user_bp.get("/search")
 @_service_auth_required
 def search_users():
