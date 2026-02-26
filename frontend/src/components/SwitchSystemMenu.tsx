@@ -52,7 +52,7 @@ export default function SwitchSystemMenu({
       // Pass hub_token for SSO with external systems
       const hubToken = localStorage.getItem('auth_token') || '';
       const separator = baseUrl.includes('?') ? '&' : '?';
-      window.location.href = `${baseUrl}${separator}hub_token=${encodeURIComponent(hubToken)}&tenant=${encodeURIComponent(tenant.slug)}`;
+      window.location.href = `${baseUrl}${separator}hub_token=${encodeURIComponent(hubToken)}&tenant=${encodeURIComponent(tenant.slug)}&role=${encodeURIComponent(tenant.role || 'player')}`;
     }
   };
 
