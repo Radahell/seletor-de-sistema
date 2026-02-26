@@ -5,7 +5,11 @@ Permite que tenants (varzea-prime, lance-de-ouro) busquem dados
 do perfil centralizado no hub via SERVICE_API_KEY.
 
 Endpoints:
-- GET /api/users/<id>/profile - Perfil completo do usuário (inter-service)
+- GET  /api/users/<id>/profile         - Perfil completo do usuário (inter-service)
+- GET  /api/users/by-tenant/<slug>     - Usuarios de um tenant (inter-service)
+- GET  /api/users/search               - Buscar usuarios por nome/email/cpf (inter-service)
+- POST /api/users/tenants/<slug>/link/<user_id> - Linkar user a tenant (inter-service)
+- DELETE /api/users/tenants/<slug>/unlink/<user_id> - Remover user de tenant (inter-service)
 """
 from __future__ import annotations
 
@@ -16,7 +20,7 @@ from typing import Any, Dict
 
 from flask import Blueprint, jsonify, request
 
-from app.db import fetch_all, fetch_one, safe_db_error
+from app.db import execute_sql, fetch_all, fetch_one, safe_db_error
 
 user_bp = Blueprint("users", __name__, url_prefix="/api/users")
 
@@ -132,6 +136,124 @@ def get_users_by_tenant(slug: str):
             users.append(dto)
 
         return jsonify({"users": users, "total": len(users)})
+
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+        return jsonify({"error": safe_db_error(e)}), 500
+
+
+@user_bp.get("/search")
+@_service_auth_required
+def search_users():
+    """Busca usuarios por nome, email, cpf, nickname, phone (inter-service).
+
+    Query params:
+    - q: termo de busca (obrigatório, min 2 chars)
+    - limit: máximo de resultados (default 20, max 100)
+    """
+    try:
+        q = (request.args.get("q") or "").strip().lower()
+        if len(q) < 2:
+            return jsonify({"error": "Busca precisa de pelo menos 2 caracteres"}), 400
+
+        limit = min(100, max(1, int(request.args.get("limit", 20))))
+
+        rows = fetch_all(
+            """
+            SELECT * FROM users
+            WHERE is_active = TRUE
+              AND (LOWER(name) LIKE :q
+                   OR LOWER(email) LIKE :q
+                   OR LOWER(COALESCE(phone,'')) LIKE :q
+                   OR LOWER(COALESCE(cpf,'')) LIKE :q
+                   OR LOWER(COALESCE(nickname,'')) LIKE :q)
+            ORDER BY name
+            LIMIT :lim
+            """,
+            {"q": f"%{q}%", "lim": limit},
+        )
+
+        return jsonify({
+            "users": [_user_profile_dto(r) for r in rows],
+            "total": len(rows),
+        })
+
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+        return jsonify({"error": safe_db_error(e)}), 500
+
+
+@user_bp.post("/tenants/<slug>/link/<int:user_id>")
+@_service_auth_required
+def link_user_to_tenant(slug: str, user_id: int):
+    """Linka user a um tenant (inter-service). Idempotente.
+
+    Body (opcional): { "role": "client" }
+    """
+    try:
+        tenant = fetch_one(
+            "SELECT id, display_name FROM tenants WHERE slug = :slug AND is_active = TRUE",
+            {"slug": slug},
+        )
+        if not tenant:
+            return jsonify({"error": "Tenant não encontrado"}), 404
+
+        user = fetch_one("SELECT id FROM users WHERE id = :id", {"id": user_id})
+        if not user:
+            return jsonify({"error": "Usuário não encontrado"}), 404
+
+        data = request.get_json(silent=True) or {}
+        role = data.get("role", "client")
+        valid_roles = ("player", "admin", "manager", "viewer", "client")
+        if role not in valid_roles:
+            role = "client"
+
+        execute_sql(
+            """
+            INSERT INTO user_tenants (user_id, tenant_id, role)
+            VALUES (:user_id, :tenant_id, :role)
+            ON DUPLICATE KEY UPDATE is_active = TRUE, left_at = NULL, role = :role
+            """,
+            {"user_id": user_id, "tenant_id": tenant["id"], "role": role},
+        )
+
+        return jsonify({
+            "message": f"Usuário linkado ao {tenant['display_name']}",
+            "tenantId": tenant["id"],
+            "userId": user_id,
+            "role": role,
+        }), 201
+
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+        return jsonify({"error": safe_db_error(e)}), 500
+
+
+@user_bp.delete("/tenants/<slug>/unlink/<int:user_id>")
+@_service_auth_required
+def unlink_user_from_tenant(slug: str, user_id: int):
+    """Remove user de um tenant (inter-service)."""
+    try:
+        tenant = fetch_one(
+            "SELECT id FROM tenants WHERE slug = :slug",
+            {"slug": slug},
+        )
+        if not tenant:
+            return jsonify({"error": "Tenant não encontrado"}), 404
+
+        execute_sql(
+            """
+            UPDATE user_tenants
+            SET is_active = FALSE, left_at = NOW()
+            WHERE user_id = :user_id AND tenant_id = :tenant_id
+            """,
+            {"user_id": user_id, "tenant_id": tenant["id"]},
+        )
+
+        return jsonify({"message": "Usuário removido do tenant"})
 
     except Exception as e:
         if ENV == "dev":

@@ -322,6 +322,34 @@ def register():
                 except Exception:
                     pass  # ignora system_id inválido
 
+        # Auto-join: sistemas auto-approve (ex: quadra) adicionam user direto
+        _AUTO_APPROVE_SYSTEMS = {"quadra"}
+        if interests:
+            for sys_id in interests:
+                try:
+                    system = fetch_one(
+                        "SELECT slug FROM systems WHERE id = :id",
+                        {"id": int(sys_id)},
+                    )
+                    if not system or system["slug"] not in _AUTO_APPROVE_SYSTEMS:
+                        continue
+
+                    auto_tenants = fetch_all(
+                        "SELECT id FROM tenants WHERE system_id = :sys_id AND is_active = TRUE",
+                        {"sys_id": int(sys_id)},
+                    )
+                    for t in auto_tenants:
+                        execute_sql(
+                            """
+                            INSERT INTO user_tenants (user_id, tenant_id, role)
+                            VALUES (:user_id, :tenant_id, 'client')
+                            ON DUPLICATE KEY UPDATE is_active = TRUE, left_at = NULL
+                            """,
+                            {"user_id": user["id"], "tenant_id": t["id"]},
+                        )
+                except Exception:
+                    pass  # ignora erro silenciosamente
+
         # Gerar token
         token = _create_token(user["id"], email)
 

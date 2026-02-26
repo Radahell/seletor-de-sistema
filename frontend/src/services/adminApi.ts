@@ -249,12 +249,30 @@ export async function deletePlayer(id: number) {
   return hubRequest(`/api/admin/users/${id}`, { method: 'DELETE' });
 }
 
-export async function linkPlayerToEstablishment(playerId: number, estId: number) {
-  return adminRequest(`/players/${playerId}/establishments/${estId}`, { method: 'POST' });
+export async function addUserToTenant(userId: number, tenantId: number, role: string = 'player') {
+  return hubRequest(`/api/admin/users/${userId}/tenants/${tenantId}`, {
+    method: 'POST',
+    body: JSON.stringify({ role }),
+  });
 }
 
-export async function unlinkPlayerFromEstablishment(playerId: number, estId: number) {
-  return adminRequest(`/players/${playerId}/establishments/${estId}`, { method: 'DELETE' });
+export async function removeUserFromTenant(userId: number, tenantId: number) {
+  return hubRequest(`/api/admin/users/${userId}/tenants/${tenantId}`, { method: 'DELETE' });
+}
+
+export interface TenantOption {
+  id: number;
+  slug: string;
+  displayName: string;
+  primaryColor?: string;
+  systemSlug: string;
+  systemName: string;
+  systemIcon?: string;
+  systemColor?: string;
+}
+
+export async function fetchAllTenants(): Promise<{ tenants: TenantOption[] }> {
+  return hubRequest('/api/admin/tenants');
 }
 
 // ─── Admin Users (System Operators) ─────────────────────────────────

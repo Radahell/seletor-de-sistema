@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS user_tenants (
     user_id INT NOT NULL,
     tenant_id INT NOT NULL,
 
-    role ENUM('player', 'admin', 'manager', 'viewer') DEFAULT 'player',
+    role ENUM('player', 'admin', 'manager', 'viewer', 'client') DEFAULT 'player',
 
     is_active BOOLEAN DEFAULT TRUE,
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
