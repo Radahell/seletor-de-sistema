@@ -260,15 +260,27 @@ def register():
             return jsonify({"error": "Nome é obrigatório"}), 400
         if not email:
             return jsonify({"error": "Email é obrigatório"}), 400
+        if not cpf:
+            return jsonify({"error": "CPF é obrigatório"}), 400
         if not password:
             return jsonify({"error": "Senha é obrigatória"}), 400
         if len(password) < 6:
             return jsonify({"error": "Senha deve ter no mínimo 6 caracteres"}), 400
 
+        # Limpar CPF (apenas dígitos para comparação)
+        cpf_digits = "".join(c for c in cpf if c.isdigit())
+        if len(cpf_digits) != 11:
+            return jsonify({"error": "CPF deve conter 11 dígitos"}), 400
+
         # Verificar email único
         existing = fetch_one("SELECT id FROM users WHERE email = :email", {"email": email})
         if existing:
             return jsonify({"error": "Este email já está cadastrado"}), 409
+
+        # Verificar CPF único
+        existing_cpf = fetch_one("SELECT id FROM users WHERE cpf = :cpf", {"cpf": cpf})
+        if existing_cpf:
+            return jsonify({"error": "Este CPF já está cadastrado"}), 409
 
         # Criar usuário
         password_hash = generate_password_hash(password)
@@ -596,8 +608,19 @@ def update_me():
             params["bio"] = (data["bio"] or "").strip() or None
 
         if "cpf" in data:
+            cpf_val = (data["cpf"] or "").strip() or None
+            if cpf_val:
+                cpf_digits = "".join(c for c in cpf_val if c.isdigit())
+                if len(cpf_digits) != 11:
+                    return jsonify({"error": "CPF deve conter 11 dígitos"}), 400
+                dup = fetch_one(
+                    "SELECT id FROM users WHERE cpf = :cpf AND id != :uid",
+                    {"cpf": cpf_val, "uid": user_id},
+                )
+                if dup:
+                    return jsonify({"error": "Este CPF já está cadastrado por outro usuário"}), 409
             updates.append("cpf = :cpf")
-            params["cpf"] = (data["cpf"] or "").strip() or None
+            params["cpf"] = cpf_val
 
         if "cnpj" in data:
             updates.append("cnpj = :cnpj")

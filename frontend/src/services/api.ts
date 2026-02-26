@@ -240,9 +240,9 @@ export interface RegisterData {
   name: string;
   email: string;
   password: string;
+  cpf: string;
   nickname?: string;
   phone?: string;
-  cpf?: string;
   cnpj?: string;
   cep?: string;
   logradouro?: string;

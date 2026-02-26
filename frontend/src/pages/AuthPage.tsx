@@ -66,6 +66,7 @@ export default function AuthPage() {
   const [city, setCity] = useState('');
   const [cidades, setCidades] = useState<Cidade[]>([]);
   const [loadingCidades, setLoadingCidades] = useState(false);
+  const [cpf, setCpf] = useState('');
   const [cep, setCep] = useState('');
   const [logradouro, setLogradouro] = useState('');
   const [numero, setNumero] = useState('');
@@ -104,7 +105,7 @@ export default function AuthPage() {
         await login(email, password);
       } else {
         const timezone = state ? getTimezoneByUF(state) : undefined;
-        await register({ name, email, password, nickname: nickname || undefined, phone: phone || undefined, cep: cep || undefined, logradouro: logradouro || undefined, numero: numero || undefined, bairro: bairro || undefined, complemento: complemento || undefined, city: city || undefined, state: state || undefined, timezone, interests: selectedInterests.length > 0 ? selectedInterests : undefined });
+        await register({ name, email, password, cpf, nickname: nickname || undefined, phone: phone || undefined, cep: cep || undefined, logradouro: logradouro || undefined, numero: numero || undefined, bairro: bairro || undefined, complemento: complemento || undefined, city: city || undefined, state: state || undefined, timezone, interests: selectedInterests.length > 0 ? selectedInterests : undefined });
       }
       const joinIntent = localStorage.getItem('join_intent');
       if (joinIntent) { localStorage.removeItem('join_intent'); navigate(`/discover/${joinIntent}`); }
@@ -178,6 +179,15 @@ export default function AuthPage() {
                     <div style={S.fieldWrap}>
                       <span style={S.iconWrap}><Phone size={15} color="#334155" /></span>
                       <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(00) 00000-0000"
+                        style={S.input} onFocus={e => (e.target.style.borderColor = '#f59e0b')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.07)')} />
+                    </div>
+                  </Field>
+
+                  <Field label="CPF *">
+                    <div style={S.fieldWrap}>
+                      <span style={S.iconWrap}><User size={15} color="#334155" /></span>
+                      <input type="text" value={cpf} onChange={e => setCpf(e.target.value)} placeholder="000.000.000-00"
+                        maxLength={14} required
                         style={S.input} onFocus={e => (e.target.style.borderColor = '#f59e0b')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.07)')} />
                     </div>
                   </Field>

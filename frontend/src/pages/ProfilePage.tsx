@@ -312,7 +312,7 @@ export default function ProfilePage() {
                 <div className="flex gap-3">
                   <div className="flex-1">
                     <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 mb-2">
-                      CPF
+                      CPF *
                     </label>
                     <input
                       type="text"
@@ -320,6 +320,7 @@ export default function ProfilePage() {
                       onChange={(e) => setCpf(e.target.value)}
                       placeholder="000.000.000-00"
                       maxLength={14}
+                      required
                       className="w-full px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:border-red-500 focus:outline-none"
                     />
                   </div>
