@@ -10,6 +10,9 @@ Endpoints:
 - GET  /api/users/search               - Buscar usuarios por nome/email/cpf (inter-service)
 - POST /api/users/tenants/<slug>/link/<user_id> - Linkar user a tenant (inter-service)
 - DELETE /api/users/tenants/<slug>/unlink/<user_id> - Remover user de tenant (inter-service)
+- GET  /api/users/tenants/<slug>/requests        - Pedidos pendentes (inter-service)
+- POST /api/users/tenants/<slug>/requests/<id>/approve - Aprovar pedido (inter-service)
+- POST /api/users/tenants/<slug>/requests/<id>/reject  - Rejeitar pedido (inter-service)
 """
 from __future__ import annotations
 
@@ -254,6 +257,156 @@ def unlink_user_from_tenant(slug: str, user_id: int):
         )
 
         return jsonify({"message": "Usuário removido do tenant"})
+
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+        return jsonify({"error": safe_db_error(e)}), 500
+
+
+# ── Access requests (inter-service) ──────────────────────────────
+
+@user_bp.get("/tenants/<slug>/requests")
+@_service_auth_required
+def list_tenant_requests(slug: str):
+    """Lista pedidos pendentes de acesso a um tenant (inter-service)."""
+    try:
+        tenant = fetch_one(
+            "SELECT id FROM tenants WHERE slug = :slug AND is_active = TRUE",
+            {"slug": slug},
+        )
+        if not tenant:
+            return jsonify({"error": "Tenant não encontrado"}), 404
+
+        rows = fetch_all(
+            """
+            SELECT
+                r.id, r.message, r.status, r.created_at,
+                u.id AS user_id, u.name, u.nickname, u.email,
+                u.phone, u.avatar_url
+            FROM user_tenant_requests r
+            INNER JOIN users u ON r.user_id = u.id
+            WHERE r.tenant_id = :tid AND r.status = 'pending'
+            ORDER BY r.created_at ASC
+            """,
+            {"tid": tenant["id"]},
+        )
+
+        requests_list = [
+            {
+                "id": r["id"],
+                "message": r.get("message"),
+                "createdAt": r["created_at"].isoformat() if r.get("created_at") else None,
+                "user": {
+                    "id": r["user_id"],
+                    "name": r.get("name", ""),
+                    "nickname": r.get("nickname"),
+                    "email": r.get("email", ""),
+                    "phone": r.get("phone"),
+                    "avatarUrl": r.get("avatar_url"),
+                },
+            }
+            for r in rows
+        ]
+
+        return jsonify({"requests": requests_list, "total": len(requests_list)})
+
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+        return jsonify({"error": safe_db_error(e)}), 500
+
+
+@user_bp.post("/tenants/<slug>/requests/<int:request_id>/approve")
+@_service_auth_required
+def approve_tenant_request(slug: str, request_id: int):
+    """Aprova um pedido de acesso (inter-service)."""
+    try:
+        tenant = fetch_one(
+            "SELECT id FROM tenants WHERE slug = :slug AND is_active = TRUE",
+            {"slug": slug},
+        )
+        if not tenant:
+            return jsonify({"error": "Tenant não encontrado"}), 404
+
+        req_row = fetch_one(
+            """
+            SELECT r.id, r.user_id, r.status, u.name
+            FROM user_tenant_requests r
+            INNER JOIN users u ON r.user_id = u.id
+            WHERE r.id = :id AND r.tenant_id = :tid
+            """,
+            {"id": request_id, "tid": tenant["id"]},
+        )
+        if not req_row:
+            return jsonify({"error": "Solicitação não encontrada"}), 404
+        if req_row["status"] != "pending":
+            return jsonify({"error": "Solicitação já foi processada"}), 409
+
+        execute_sql(
+            """
+            UPDATE user_tenant_requests
+            SET status = 'approved', responded_at = NOW()
+            WHERE id = :id
+            """,
+            {"id": request_id},
+        )
+
+        execute_sql(
+            """
+            INSERT INTO user_tenants (user_id, tenant_id, role, approved_at)
+            VALUES (:user_id, :tenant_id, 'player', NOW())
+            ON DUPLICATE KEY UPDATE
+                is_active = TRUE, left_at = NULL, approved_at = NOW()
+            """,
+            {"user_id": req_row["user_id"], "tenant_id": tenant["id"]},
+        )
+
+        return jsonify({
+            "message": f"{req_row['name']} foi aprovado!",
+            "userId": req_row["user_id"],
+        })
+
+    except Exception as e:
+        if ENV == "dev":
+            traceback.print_exc()
+        return jsonify({"error": safe_db_error(e)}), 500
+
+
+@user_bp.post("/tenants/<slug>/requests/<int:request_id>/reject")
+@_service_auth_required
+def reject_tenant_request(slug: str, request_id: int):
+    """Rejeita um pedido de acesso (inter-service)."""
+    try:
+        tenant = fetch_one(
+            "SELECT id FROM tenants WHERE slug = :slug AND is_active = TRUE",
+            {"slug": slug},
+        )
+        if not tenant:
+            return jsonify({"error": "Tenant não encontrado"}), 404
+
+        req_row = fetch_one(
+            "SELECT id, status FROM user_tenant_requests WHERE id = :id AND tenant_id = :tid",
+            {"id": request_id, "tid": tenant["id"]},
+        )
+        if not req_row:
+            return jsonify({"error": "Solicitação não encontrada"}), 404
+        if req_row["status"] != "pending":
+            return jsonify({"error": "Solicitação já foi processada"}), 409
+
+        data = request.get_json(silent=True) or {}
+        reason = data.get("reason", "")
+
+        execute_sql(
+            """
+            UPDATE user_tenant_requests
+            SET status = 'rejected', response_message = :reason, responded_at = NOW()
+            WHERE id = :id
+            """,
+            {"id": request_id, "reason": reason},
+        )
+
+        return jsonify({"message": "Solicitação rejeitada"})
 
     except Exception as e:
         if ENV == "dev":
