@@ -322,6 +322,7 @@ def join_tenant():
                 """
                 INSERT INTO user_tenants (user_id, tenant_id, role)
                 VALUES (:user_id, :tenant_id, 'client')
+                ON DUPLICATE KEY UPDATE is_active = TRUE, left_at = NULL
                 """,
                 {"user_id": g.current_user_id, "tenant_id": tenant["id"]},
             )
