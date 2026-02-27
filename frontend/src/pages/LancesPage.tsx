@@ -30,6 +30,9 @@ interface ClipInfo {
   total_duration_seconds: number;
   thumbnail_path?: string;
   resolution?: string;
+  athlete_name?: string;
+  event_type?: string;
+  event_label?: string;
 }
 
 interface RecordingInfo {
@@ -275,9 +278,16 @@ function ClipCard({
           <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${getStatusColor(clip.status)}`}>
             {getStatusLabel(clip.status)}
           </span>
-          <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-medium">{clip.mode}</span>
+          {clip.event_label && (
+            <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md text-amber-400 bg-amber-500/10 border border-amber-500/20">
+              {clip.event_label}
+            </span>
+          )}
         </div>
 
+        {clip.athlete_name && (
+          <p className="text-sm text-white font-semibold truncate mb-0.5">{clip.athlete_name}</p>
+        )}
         <p className="text-sm text-zinc-400 font-medium">{formatDate(clip.created_at)}</p>
 
         {clip.resolution && (
