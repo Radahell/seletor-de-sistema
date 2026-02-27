@@ -658,7 +658,9 @@ export default function LancesPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [playerUrl, setPlayerUrl] = useState<string | null>(null);
+  const [playerClipId, setPlayerClipId] = useState<string | null>(null);
   const [playerRotation, setPlayerRotation] = useState(0);
+  const [isRotating, setIsRotating] = useState(false);
 
   const token = localStorage.getItem('auth_token');
   const currentTenant = tenants.find(t => t.system?.slug === 'lances') || null;
@@ -748,8 +750,25 @@ export default function LancesPage() {
     try {
       const data = await sclFetch<{ url: string }>(`/api/athlete/clips/${clipId}/stream`, token);
       setPlayerUrl(data.url);
+      setPlayerClipId(clipId);
       setPlayerRotation(0);
     } catch (err: any) { setError(err.message); }
+  };
+
+  const handleRotateOnServer = async () => {
+    if (!token || !playerClipId || isRotating) return;
+    setIsRotating(true);
+    try {
+      await sclFetch<{ status: string }>(`/api/athlete/clips/${playerClipId}/rotate`, token);
+      // Reload the video with cache-bust
+      const data = await sclFetch<{ url: string }>(`/api/athlete/clips/${playerClipId}/stream`, token);
+      setPlayerUrl(data.url + (data.url.includes('?') ? '&' : '?') + `_t=${Date.now()}`);
+      setPlayerRotation(0);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao rotacionar');
+    } finally {
+      setIsRotating(false);
+    }
   };
 
   const handleDownloadClip = async (clipId: string) => {
@@ -997,7 +1016,7 @@ export default function LancesPage() {
       {playerUrl && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
-          onClick={() => { setPlayerUrl(null); setPlayerRotation(0); }}
+          onClick={() => { setPlayerUrl(null); setPlayerClipId(null); setPlayerRotation(0); }}
         >
           <div
             className="relative w-full max-w-4xl mx-4"
@@ -1006,18 +1025,35 @@ export default function LancesPage() {
             {/* Controls bar */}
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
+                {/* Preview rotation (visual only) */}
                 <button
                   onClick={() => setPlayerRotation(r => (r + 90) % 360)}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-zinc-300 hover:text-white transition-all border border-white/10 hover:border-purple-500/30"
                   style={{ background: 'rgba(255,255,255,0.05)' }}
-                  title="Rotacionar 90°"
+                  title="Preview: girar visualização 90°"
                 >
                   <RotateCw className="w-4 h-4" />
-                  {playerRotation > 0 ? `${playerRotation}°` : 'Girar'}
+                  {playerRotation > 0 ? `${playerRotation}°` : 'Girar preview'}
+                </button>
+
+                {/* Server rotation (permanent) */}
+                <button
+                  onClick={handleRotateOnServer}
+                  disabled={isRotating}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-purple-300 hover:text-white transition-all border border-purple-500/20 hover:border-purple-500/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ background: 'rgba(124,58,237,0.1)' }}
+                  title="Rotacionar o arquivo de vídeo permanentemente (90° horário)"
+                >
+                  {isRotating ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RotateCw className="w-4 h-4" />
+                  )}
+                  {isRotating ? 'Rotacionando...' : 'Rotacionar vídeo'}
                 </button>
               </div>
               <button
-                onClick={() => { setPlayerUrl(null); setPlayerRotation(0); }}
+                onClick={() => { setPlayerUrl(null); setPlayerClipId(null); setPlayerRotation(0); }}
                 className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-white/10 transition-all"
               >
                 <X className="w-5 h-5" />
@@ -1029,6 +1065,7 @@ export default function LancesPage() {
               style={{ aspectRatio: playerRotation % 180 === 0 ? '16/9' : '9/16' }}
             >
               <video
+                key={playerUrl}
                 src={playerUrl}
                 controls
                 autoPlay
