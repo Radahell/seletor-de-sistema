@@ -759,7 +759,17 @@ export default function LancesPage() {
     if (!token || !playerClipId || isRotating) return;
     setIsRotating(true);
     try {
-      await sclFetch<{ status: string }>(`/api/athlete/clips/${playerClipId}/rotate`, token);
+      const resp = await fetch(`${SCL_API}/api/athlete/clips/${playerClipId}/rotate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.detail || 'Erro ao rotacionar');
+      }
       // Reload the video with cache-bust
       const data = await sclFetch<{ url: string }>(`/api/athlete/clips/${playerClipId}/stream`, token);
       setPlayerUrl(data.url + (data.url.includes('?') ? '&' : '?') + `_t=${Date.now()}`);
