@@ -8,12 +8,13 @@ import {
   Loader2,
   Play,
   RefreshCw,
+  RotateCw,
   Trash2,
   Video,
   Wifi,
   X
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SwitchSystemMenu from '../components/SwitchSystemMenu';
 import { useAuth } from '../contexts/AuthContext';
@@ -56,6 +57,8 @@ interface SessionInfo {
 }
 
 type TabType = 'live' | 'clips' | 'recordings';
+
+const PAGE_SIZE = 12;
 
 async function sclFetch<T>(endpoint: string, token: string): Promise<T> {
   const response = await fetch(`${SCL_API}${endpoint}`, {
@@ -653,11 +656,29 @@ export default function LancesPage() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [playerUrl, setPlayerUrl] = useState<string | null>(null);
+  const [playerRotation, setPlayerRotation] = useState(0);
 
   const token = localStorage.getItem('auth_token');
   const currentTenant = tenants.find(t => t.system?.slug === 'lances') || null;
 
+  useEffect(() => { setPage(1); }, [activeTab]);
   useEffect(() => { loadData(); }, [activeTab]);
+
+  const fetchAllPages = async <T,>(endpoint: string, key: string, tkn: string): Promise<T[]> => {
+    let all: T[] = [];
+    let pg = 1;
+    const limit = 200;
+    while (true) {
+      const data = await sclFetch<Record<string, any>>(`${endpoint}?page=${pg}&limit=${limit}`, tkn);
+      const items: T[] = data[key] || [];
+      all = [...all, ...items];
+      if (items.length < limit || all.length >= (data.total || 0)) break;
+      pg++;
+    }
+    return all;
+  };
 
   const loadData = async () => {
     if (!token) return;
@@ -665,11 +686,11 @@ export default function LancesPage() {
     setError(null);
     try {
       if (activeTab === 'clips') {
-        const data = await sclFetch<{ clips: ClipInfo[]; total: number }>('/api/athlete/clips?limit=50', token);
-        setClips(data.clips);
+        const all = await fetchAllPages<ClipInfo>('/api/athlete/clips', 'clips', token);
+        setClips(all);
       } else if (activeTab === 'recordings') {
-        const data = await sclFetch<{ recordings: RecordingInfo[]; total: number }>('/api/athlete/recordings?limit=50', token);
-        setRecordings(data.recordings);
+        const all = await fetchAllPages<RecordingInfo>('/api/athlete/recordings', 'recordings', token);
+        setRecordings(all);
       } else if (activeTab === 'live') {
         try {
           const data = await sclFetch<SessionInfo[]>('/api/athlete/sessions', token);
@@ -682,6 +703,12 @@ export default function LancesPage() {
       setIsLoading(false);
     }
   };
+
+  // Client-side pagination
+  const paginatedClips = useMemo(() => clips.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [clips, page]);
+  const paginatedRecordings = useMemo(() => recordings.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [recordings, page]);
+  const totalClipPages = Math.max(1, Math.ceil(clips.length / PAGE_SIZE));
+  const totalRecordingPages = Math.max(1, Math.ceil(recordings.length / PAGE_SIZE));
 
   const formatDuration = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -720,7 +747,8 @@ export default function LancesPage() {
     if (!token) return;
     try {
       const data = await sclFetch<{ url: string }>(`/api/athlete/clips/${clipId}/stream`, token);
-      window.open(data.url, '_blank');
+      setPlayerUrl(data.url);
+      setPlayerRotation(0);
     } catch (err: any) { setError(err.message); }
   };
 
@@ -854,7 +882,7 @@ export default function LancesPage() {
                     {clips.length} {clips.length === 1 ? 'lance' : 'lances'} — passe o mouse para ver a prévia
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {clips.map(clip => (
+                    {paginatedClips.map(clip => (
                       <ClipCard
                         key={clip.id}
                         clip={clip}
@@ -869,6 +897,29 @@ export default function LancesPage() {
                       />
                     ))}
                   </div>
+                  {totalClipPages > 1 && (
+                    <div className="flex items-center justify-center gap-4 mt-8">
+                      <button
+                        disabled={page <= 1}
+                        onClick={() => setPage(p => p - 1)}
+                        className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all border border-white/10 hover:border-purple-500/30 hover:text-purple-400 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-400"
+                        style={{ background: 'rgba(255,255,255,0.03)' }}
+                      >
+                        Anterior
+                      </button>
+                      <span className="text-xs text-zinc-500 font-mono">
+                        {page} / {totalClipPages}
+                      </span>
+                      <button
+                        disabled={page >= totalClipPages}
+                        onClick={() => setPage(p => p + 1)}
+                        className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all border border-white/10 hover:border-purple-500/30 hover:text-purple-400 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-400"
+                        style={{ background: 'rgba(255,255,255,0.03)' }}
+                      >
+                        Próximo
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             )}
@@ -877,19 +928,44 @@ export default function LancesPage() {
               recordings.length === 0 ? (
                 <EmptyState icon={Video} title="Nenhuma gravação encontrada" description="Gravações completas dos seus jogos aparecerão aqui" />
               ) : (
-                <div className="space-y-3">
-                  {recordings.map(rec => (
-                    <RecordingCard
-                      key={rec.id}
-                      rec={rec}
-                      token={token}
-                      getStatusColor={getStatusColor}
-                      getStatusLabel={getStatusLabel}
-                      formatDuration={formatDuration}
-                      formatDate={formatDate}
-                      onError={setError}
-                    />
-                  ))}
+                <div>
+                  <div className="space-y-3">
+                    {paginatedRecordings.map(rec => (
+                      <RecordingCard
+                        key={rec.id}
+                        rec={rec}
+                        token={token}
+                        getStatusColor={getStatusColor}
+                        getStatusLabel={getStatusLabel}
+                        formatDuration={formatDuration}
+                        formatDate={formatDate}
+                        onError={setError}
+                      />
+                    ))}
+                  </div>
+                  {totalRecordingPages > 1 && (
+                    <div className="flex items-center justify-center gap-4 mt-8">
+                      <button
+                        disabled={page <= 1}
+                        onClick={() => setPage(p => p - 1)}
+                        className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all border border-white/10 hover:border-purple-500/30 hover:text-purple-400 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-400"
+                        style={{ background: 'rgba(255,255,255,0.03)' }}
+                      >
+                        Anterior
+                      </button>
+                      <span className="text-xs text-zinc-500 font-mono">
+                        {page} / {totalRecordingPages}
+                      </span>
+                      <button
+                        disabled={page >= totalRecordingPages}
+                        onClick={() => setPage(p => p + 1)}
+                        className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all border border-white/10 hover:border-purple-500/30 hover:text-purple-400 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-400"
+                        style={{ background: 'rgba(255,255,255,0.03)' }}
+                      >
+                        Próximo
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             )}
@@ -916,6 +992,59 @@ export default function LancesPage() {
           </>
         )}
       </main>
+
+      {/* Video Player Modal */}
+      {playerUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+          onClick={() => { setPlayerUrl(null); setPlayerRotation(0); }}
+        >
+          <div
+            className="relative w-full max-w-4xl mx-4"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Controls bar */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPlayerRotation(r => (r + 90) % 360)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-zinc-300 hover:text-white transition-all border border-white/10 hover:border-purple-500/30"
+                  style={{ background: 'rgba(255,255,255,0.05)' }}
+                  title="Rotacionar 90°"
+                >
+                  <RotateCw className="w-4 h-4" />
+                  {playerRotation > 0 ? `${playerRotation}°` : 'Girar'}
+                </button>
+              </div>
+              <button
+                onClick={() => { setPlayerUrl(null); setPlayerRotation(0); }}
+                className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-white/10 transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Video */}
+            <div className="rounded-2xl overflow-hidden bg-black border border-white/10 flex items-center justify-center"
+              style={{ aspectRatio: playerRotation % 180 === 0 ? '16/9' : '9/16' }}
+            >
+              <video
+                src={playerUrl}
+                controls
+                autoPlay
+                playsInline
+                className="max-w-full max-h-full"
+                style={{
+                  transform: `rotate(${playerRotation}deg)`,
+                  transition: 'transform 0.3s ease',
+                  maxWidth: playerRotation % 180 !== 0 ? '56.25%' : '100%',
+                  maxHeight: playerRotation % 180 !== 0 ? '177.78%' : '100%',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
