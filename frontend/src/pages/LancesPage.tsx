@@ -33,6 +33,7 @@ interface ClipInfo {
   athlete_name?: string;
   event_type?: string;
   event_label?: string;
+  camera_id?: string;
 }
 
 interface RecordingInfo {
@@ -269,9 +270,16 @@ function ClipCard({
       {/* Info */}
       <div className="p-4">
         <div className="flex items-center justify-between mb-2">
-          <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${getStatusColor(clip.status)}`}>
-            {getStatusLabel(clip.status)}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${getStatusColor(clip.status)}`}>
+              {getStatusLabel(clip.status)}
+            </span>
+            {clip.camera_id && (
+              <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md text-sky-400 bg-sky-500/10 border border-sky-500/20">
+                {clip.camera_id.replace('cam_', 'Cam ').replace(/\b([a-d])\b/g, (_m, l) => l.toUpperCase())}
+              </span>
+            )}
+          </div>
           {clip.event_label && (
             <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md text-amber-400 bg-amber-500/10 border border-amber-500/20">
               {clip.event_label}
