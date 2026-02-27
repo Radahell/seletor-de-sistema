@@ -186,7 +186,6 @@ function ClipCard({
   onDelete,
   getStatusColor,
   getStatusLabel,
-  formatDuration,
   formatDate,
 }: {
   clip: ClipInfo;
@@ -196,7 +195,6 @@ function ClipCard({
   onDelete: (id: string) => void;
   getStatusColor: (s: string) => string;
   getStatusLabel: (s: string) => string;
-  formatDuration: (s: number) => string;
   formatDate: (s?: string) => string;
 }) {
   const { videoRef, previewUrl, isHovered, handleMouseEnter, handleMouseLeave } =
@@ -266,10 +264,6 @@ function ClipCard({
           </div>
         )}
 
-        {/* Duration */}
-        <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-white text-xs font-mono border border-white/10">
-          {formatDuration(clip.total_duration_seconds)}
-        </div>
       </div>
 
       {/* Info */}
@@ -931,7 +925,6 @@ export default function LancesPage() {
                         onDelete={handleDeleteClip}
                         getStatusColor={getStatusColor}
                         getStatusLabel={getStatusLabel}
-                        formatDuration={formatDuration}
                         formatDate={formatDate}
                       />
                     ))}
