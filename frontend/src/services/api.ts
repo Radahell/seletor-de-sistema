@@ -240,7 +240,7 @@ export interface RegisterData {
   name: string;
   email: string;
   password: string;
-  cpf: string;
+  cpf?: string;
   nickname?: string;
   phone?: string;
   cnpj?: string;

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import api, { User, TenantInfo, ApiError } from '../services/api';
+import api, { User, TenantInfo, ApiError, RegisterData } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
@@ -16,24 +16,6 @@ interface AuthContextType {
   updateTenants: (tenants: TenantInfo[]) => void;
 }
 
-interface RegisterData {
-  name: string;
-  email: string;
-  password: string;
-  nickname?: string;
-  phone?: string;
-  cpf?: string;
-  cnpj?: string;
-  cep?: string;
-  logradouro?: string;
-  numero?: string;
-  bairro?: string;
-  complemento?: string;
-  city?: string;
-  state?: string;
-  timezone?: string;
-  interests?: number[];
-}
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
