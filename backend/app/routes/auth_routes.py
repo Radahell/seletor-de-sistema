@@ -68,8 +68,8 @@ def _create_token(user_id: int, email: str, expires_hours: int = None) -> str:
     payload = {
         "user_id": user_id,
         "email": email,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=expires_hours),
-        "iat": datetime.datetime.utcnow(),
+        "exp": datetime.datetime.now() + datetime.timedelta(hours=expires_hours),
+        "iat": datetime.datetime.now(),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
@@ -99,7 +99,7 @@ def _create_session(user_id: int, token: str, tenant_id: int = None) -> None:
     """Cria registro de sessão no banco."""
     client = _get_client_info()
     token_hash = _hash_token(token)
-    expires_at = datetime.datetime.utcnow() + datetime.timedelta(hours=JWT_EXPIRY_HOURS)
+    expires_at = datetime.datetime.now() + datetime.timedelta(hours=JWT_EXPIRY_HOURS)
 
     execute_sql(
         """
@@ -853,7 +853,7 @@ def verify_email():
         # Verificar expiração (24h)
         if user.get("email_verification_sent_at"):
             sent_at = user["email_verification_sent_at"]
-            if (datetime.datetime.utcnow() - sent_at).total_seconds() > 86400:
+            if (datetime.datetime.now() - sent_at).total_seconds() > 86400:
                 return jsonify({"error": "Token expirado. Solicite um novo."}), 400
 
         # Já verificado?
@@ -885,7 +885,7 @@ def resend_verification():
 
         # Rate limit: 1 a cada 2 minutos
         last_sent = user.get("email_verification_sent_at")
-        if last_sent and (datetime.datetime.utcnow() - last_sent).total_seconds() < 120:
+        if last_sent and (datetime.datetime.now() - last_sent).total_seconds() < 120:
             return jsonify({"error": "Aguarde 2 minutos para reenviar"}), 429
 
         token = secrets.token_urlsafe(32)

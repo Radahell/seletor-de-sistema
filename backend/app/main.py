@@ -156,7 +156,7 @@ def list_downloads():
                 "name": entry.name,
                 "size": stat.st_size,
                 "updatedAt": datetime.datetime.fromtimestamp(
-                    stat.st_mtime, tz=datetime.timezone.utc
+                    stat.st_mtime
                 ).isoformat(),
             }
         )
@@ -297,7 +297,7 @@ def super_admin_login():
             {
                 "user_id": admin["id"],
                 "email": admin["email"],
-                "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24),
+                "exp": datetime.datetime.now() + datetime.timedelta(hours=24),
             },
             JWT_SECRET,
             algorithm="HS256",
