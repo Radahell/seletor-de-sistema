@@ -4,6 +4,7 @@ import os
 import re
 import traceback
 import datetime
+from datetime import timezone
 import jwt
 from functools import wraps
 from typing import Any, Dict, Optional
@@ -13,7 +14,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import create_engine, text
-from app.security import hash_password
+from app.security import hash_password, verify_password
 
 from app.db import (
     init_db,
@@ -27,6 +28,7 @@ from app.db import (
     drop_physical_database,
     build_tenant_database_url,
     apply_sql_template,
+    ensure_password_column,
     TEMPLATES_DIR,
     TENANT_DB_HOST,
 )
@@ -37,9 +39,9 @@ from app.db import (
 load_dotenv()
 
 ENV = os.getenv("ENV", "dev")
-JWT_SECRET = os.getenv("JWT_SECRET") or ""
-if not JWT_SECRET:
-    raise RuntimeError("JWT_SECRET is required (env var).")
+JWT_SECRET = os.getenv("JWT_SECRET", "")
+if not JWT_SECRET or len(JWT_SECRET) < 32:
+    raise RuntimeError("JWT_SECRET ausente ou < 32 chars. Defina em produção.")
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
@@ -88,6 +90,11 @@ def token_required(f):
         return f(*args, **kwargs)
 
     return decorated
+
+
+# Decorator compartilhado: exige login (sessao valida) + super admin.
+# Importado aqui para ser aplicado em todas as rotas /api/super-admin/*.
+from app.decorators import super_admin_required  # noqa: E402
 
 
 # ------------------------------------------------------------
@@ -292,12 +299,28 @@ def super_admin_login():
     if not admin:
         return jsonify({"error": "Credenciais inválidas"}), 401
 
-    if check_password_hash(admin["password_hash"], data["password"]):
+    # Usa verify_password (com fallback SHA-256) para não perder acesso de
+    # super_admins seeded com hash legado antes da migração para werkzeug.
+    if verify_password(data["password"], admin["password_hash"] or ""):
+        # Auto-upgrade silencioso: se ainda for SHA-256 legado (sem '$'),
+        # regrava com pbkdf2/scrypt na hora — assim o próximo login já valida
+        # pelo branch novo e o hash legado some do banco.
+        try:
+            stored = admin["password_hash"] or ""
+            if stored and "$" not in stored and not stored.startswith(("pbkdf2:", "scrypt:")):
+                execute_sql(
+                    "UPDATE super_admins SET password_hash = :hash WHERE id = :id",
+                    {"hash": hash_password(data["password"]), "id": admin["id"]},
+                )
+        except Exception:
+            # Falha no upgrade não pode bloquear login.
+            pass
+
         token = jwt.encode(
             {
                 "user_id": admin["id"],
                 "email": admin["email"],
-                "exp": datetime.datetime.now() + datetime.timedelta(hours=24),
+                "exp": datetime.datetime.now(timezone.utc) + datetime.timedelta(hours=24),
             },
             JWT_SECRET,
             algorithm="HS256",
@@ -308,8 +331,7 @@ def super_admin_login():
 
 
 @app.post("/api/super-admin/create-tenant")
-@token_required
-
+@super_admin_required
 def create_tenant():
     """
     Cria:
@@ -407,11 +429,32 @@ def create_tenant():
                     )
                 )
 
+            # 3.5) Garante coluna password_hash com tamanho suficiente para
+            # hashes do werkzeug (pbkdf2:sha256 ~100, scrypt ~150 chars).
+            # Cobre templates antigos onde a coluna pode não existir ou estar
+            # com VARCHAR menor (ex.: 64, legado SHA-256).
+            ensure_password_column(conn, table="users", min_length=255)
+
             # 4) cria admin no DB do tenant
             admin_email = data.get("adminEmail", f"admin@{slug}.com")
-            admin_pass = data.get("adminPassword", "123")
+            admin_pass = data.get("adminPassword")
             admin_name = data.get("adminName", "Super Admin")
             admin_nickname = data.get("adminNickname", "Super Admin")
+
+            # Validação de senha do admin (NÃO aceitar default fraco)
+            if not isinstance(admin_pass, str) or not admin_pass.strip():
+                return jsonify({
+                    "error": "adminPassword é obrigatório."
+                }), 400
+            admin_pass = admin_pass.strip()
+            if admin_pass in {"123", "admin", "password", "senha"}:
+                return jsonify({
+                    "error": "adminPassword é trivial/padrão. Escolha uma senha forte."
+                }), 400
+            if len(admin_pass) < 10:
+                return jsonify({
+                    "error": "adminPassword deve ter no mínimo 10 caracteres."
+                }), 400
 
             pass_hash = hash_password(admin_pass)
 
@@ -535,7 +578,7 @@ def create_tenant():
 
 
 @app.get("/api/super-admin/tenants")
-@token_required
+@super_admin_required
 def list_all_tenants_admin():
     try:
         sql = """
@@ -572,7 +615,7 @@ def list_all_tenants_admin():
 
 
 @app.delete("/api/super-admin/tenants/<int:tenant_id>")
-@token_required
+@super_admin_required
 def delete_tenant(tenant_id: int):
     """
     Remove:
@@ -606,7 +649,7 @@ def delete_tenant(tenant_id: int):
 
 
 @app.patch("/api/super-admin/tenants/<int:tenant_id>")
-@token_required
+@super_admin_required
 def update_tenant(tenant_id: int):
     """Edita campos do tenant: display_name, primary_color, allow_registration, is_active."""
     try:
@@ -642,7 +685,7 @@ def update_tenant(tenant_id: int):
 
 
 @app.get("/api/super-admin/tenants/<int:tenant_id>/admins")
-@token_required
+@super_admin_required
 def list_tenant_admins(tenant_id: int):
     """Lista usuários admin de um tenant (via user_tenants com role=admin)."""
     try:
@@ -685,7 +728,7 @@ def list_tenant_admins(tenant_id: int):
 
 
 @app.put("/api/super-admin/tenants/<int:tenant_id>/admins/<int:user_id>/role")
-@token_required
+@super_admin_required
 def update_tenant_user_role(tenant_id: int, user_id: int):
     """Altera role de um membro do tenant (admin/player/staff)."""
     try:
@@ -714,7 +757,7 @@ def update_tenant_user_role(tenant_id: int, user_id: int):
 
 
 @app.get("/api/super-admin/tenants/<int:tenant_id>/members")
-@token_required
+@super_admin_required
 def list_tenant_members(tenant_id: int):
     """Lista todos os membros de um tenant."""
     try:
@@ -757,7 +800,7 @@ def list_tenant_members(tenant_id: int):
 # Super-Admin: CRUD de Systems (tipos de sistema)
 # ------------------------------------------------------------
 @app.get("/api/super-admin/systems")
-@token_required
+@super_admin_required
 def list_all_systems():
     """Lista todos os sistemas (ativos e inativos) para o super admin."""
     try:
@@ -782,7 +825,7 @@ def list_all_systems():
 
 
 @app.post("/api/super-admin/systems")
-@token_required
+@super_admin_required
 def create_system():
     """Cria um novo tipo de sistema."""
     try:
@@ -821,7 +864,7 @@ def create_system():
 
 
 @app.patch("/api/super-admin/systems/<int:system_id>")
-@token_required
+@super_admin_required
 def update_system(system_id: int):
     """Edita campos de um sistema."""
     try:
@@ -863,7 +906,7 @@ def update_system(system_id: int):
 
 
 @app.delete("/api/super-admin/systems/<int:system_id>")
-@token_required
+@super_admin_required
 def delete_system(system_id: int):
     """Desativa um sistema (soft delete). Nao apaga tenants existentes."""
     try:
@@ -891,7 +934,7 @@ def delete_system(system_id: int):
 # Super-Admin: Pedidos de Acesso (access requests)
 # ------------------------------------------------------------
 @app.get("/api/super-admin/tenants/<int:tenant_id>/requests")
-@token_required
+@super_admin_required
 def list_tenant_requests_admin(tenant_id: int):
     """Lista solicitações pendentes de um tenant (super admin)."""
     try:
@@ -931,7 +974,7 @@ def list_tenant_requests_admin(tenant_id: int):
 
 
 @app.post("/api/super-admin/tenants/<int:tenant_id>/requests/<int:request_id>/approve")
-@token_required
+@super_admin_required
 def approve_request_admin(tenant_id: int, request_id: int):
     """Aprovar solicitação de acesso (super admin)."""
     try:
@@ -975,7 +1018,7 @@ def approve_request_admin(tenant_id: int, request_id: int):
 
 
 @app.post("/api/super-admin/tenants/<int:tenant_id>/requests/<int:request_id>/reject")
-@token_required
+@super_admin_required
 def reject_request_admin(tenant_id: int, request_id: int):
     """Rejeitar solicitação de acesso (super admin)."""
     try:

@@ -245,7 +245,9 @@ export default function AdminEstablishmentDetailPage() {
     if (!resetPwd) return;
     setResetPwdMsg('');
     try {
-      await resetManagerPassword(estId, mgrId, { new_password: resetPwd });
+      // Envia ambas as chaves para compatibilidade com backends antigos
+      // que esperam `password` e novos que esperam `new_password`.
+      await resetManagerPassword(estId, mgrId, { new_password: resetPwd, password: resetPwd });
       setResetPwdMsg('Senha redefinida com sucesso!');
       setResetPwd('');
       setResetPwdId(null);

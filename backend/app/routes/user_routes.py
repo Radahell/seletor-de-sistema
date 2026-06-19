@@ -16,6 +16,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import hmac
 import os
 import traceback
 from functools import wraps
@@ -40,11 +41,17 @@ SERVICE_API_KEY = os.getenv("SERVICE_API_KEY", "")
 
 
 def _service_auth_required(f):
-    """Decorator que exige X-Service-Key válida."""
+    """Decorator que exige X-Service-Key válida.
+
+    Usa ``hmac.compare_digest`` para evitar timing attacks na comparação
+    do segredo inter-service.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
-        key = request.headers.get("X-Service-Key", "")
-        if not SERVICE_API_KEY or key != SERVICE_API_KEY:
+        key = request.headers.get("X-Service-Key", "") or ""
+        if not SERVICE_API_KEY:
+            return jsonify({"error": "Acesso negado"}), 403
+        if not hmac.compare_digest(key, SERVICE_API_KEY):
             return jsonify({"error": "Acesso negado"}), 403
         return f(*args, **kwargs)
     return decorated
@@ -313,9 +320,19 @@ def link_user_to_tenant(slug: str, user_id: int):
             return jsonify({"error": "Usuário não encontrado"}), 404
 
         data = request.get_json(silent=True) or {}
-        role = data.get("role", "client")
-        valid_roles = ("player", "admin", "manager", "viewer", "client")
-        if role not in valid_roles:
+        role = (data.get("role") or "client").strip().lower()
+        # SEGURANÇA: o endpoint inter-service NÃO pode promover usuários a
+        # 'admin' nem 'manager'. Esses papéis exigem provisionamento manual
+        # com auditoria (super-admin) ou fluxo dedicado de gestão.
+        allowed_roles = ("player", "viewer", "client")
+        if role not in allowed_roles:
+            if role in ("admin", "manager"):
+                return jsonify({
+                    "error": (
+                        "Papel não permitido neste endpoint. "
+                        "Use somente 'client', 'player' ou 'viewer'."
+                    )
+                }), 403
             role = "client"
 
         execute_sql(

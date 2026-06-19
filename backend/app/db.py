@@ -303,3 +303,53 @@ def build_tenant_database_url(target_host: Optional[str], db_name: str) -> str:
     """
     host = (target_host or "").strip() or TENANT_DB_HOST
     return f"mysql+pymysql://{TENANT_DB_USER}:{TENANT_DB_PASS}@{host}:{TENANT_DB_PORT}/{db_name}"
+
+
+def ensure_password_column(conn, table: str = "users", min_length: int = 255) -> None:
+    """Garante que ``<table>.password_hash`` exista e caiba hashes do werkzeug.
+
+    Templates antigos de tenant (model_jogador.sql, model_quadra.sql) podem
+    não declarar a coluna ``password_hash`` na tabela local ``users``, ou
+    declará-la com tamanho insuficiente (ex.: VARCHAR(64) legado, herdado de
+    SHA-256 puro). Hashes do werkzeug — pbkdf2:sha256 (~100 chars) e scrypt
+    (~150 chars) — não cabem em VARCHAR(64) e a inserção do admin do tenant
+    falharia silenciosamente ou com truncamento.
+
+    Esta função é idempotente: se a coluna já existir com tamanho >=
+    ``min_length``, não faz nada. Caso contrário, faz ``ADD`` ou ``MODIFY``
+    para ``VARCHAR(<min_length>)``.
+
+    Deve ser chamada após ``apply_sql_template`` e antes de qualquer INSERT
+    de usuário no DB do tenant.
+    """
+    db = conn.exec_driver_sql("SELECT DATABASE()").scalar()
+    if not db:
+        raise RuntimeError("Nenhum database selecionado (DATABASE() retornou NULL).")
+
+    row = conn.exec_driver_sql(
+        """
+        SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = %s
+          AND COLUMN_NAME = 'password_hash'
+        """,
+        (table,),
+    ).fetchone()
+
+    if row is None:
+        # Coluna não existe: adiciona como NULL (admins de tenant existentes
+        # podem não ter senha local; o fluxo de criação irá popular).
+        conn.exec_driver_sql(
+            f"ALTER TABLE `{table}` "
+            f"ADD COLUMN password_hash VARCHAR({min_length}) NULL"
+        )
+        return
+
+    data_type = (row[0] or "").lower()
+    current_len = row[1] or 0
+    if data_type in {"varchar", "char"} and current_len < min_length:
+        conn.exec_driver_sql(
+            f"ALTER TABLE `{table}` "
+            f"MODIFY COLUMN password_hash VARCHAR({min_length}) NULL"
+        )

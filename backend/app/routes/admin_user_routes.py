@@ -17,29 +17,13 @@ Endpoints:
 from __future__ import annotations
 
 import traceback
-from functools import wraps
 
 from flask import Blueprint, g, jsonify, request
 
 from app.db import execute_sql, fetch_all, fetch_one, safe_db_error, ENV
-from app.routes.auth_routes import login_required
+from app.decorators import super_admin_required as _super_admin_required
 
 admin_user_bp = Blueprint("admin_users", __name__, url_prefix="/api/admin")
-
-
-def _super_admin_required(f):
-    """Decorator: exige login + super admin."""
-    @wraps(f)
-    @login_required
-    def decorated(*args, **kwargs):
-        sa = fetch_one(
-            "SELECT 1 FROM super_admins WHERE email = :email AND is_active = TRUE",
-            {"email": g.current_user["email"]},
-        )
-        if not sa:
-            return jsonify({"error": "Acesso restrito a super administradores"}), 403
-        return f(*args, **kwargs)
-    return decorated
 
 
 def _user_to_item(row):

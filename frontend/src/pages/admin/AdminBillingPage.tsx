@@ -75,8 +75,9 @@ export default function AdminBillingPage() {
       try {
         const res = await fetchEstablishments({ per_page: '200' });
         setEstablishments(res.items || []);
-      } catch {
-        /* silent */
+      } catch (e) {
+        console.error(e);
+        /* TODO: toast */
       }
     })();
   }, []);
@@ -155,6 +156,14 @@ function InvoicesTab({
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: '' });
   const [creatingPayment, setCreatingPayment] = useState(false);
+  const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string>('');
+  const [paymentFormError, setPaymentFormError] = useState('');
+
+  // Soma de pagamentos já lançados para a fatura aberta
+  const paidSoFar = payments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
+  const remainingBalance = paymentInvoice
+    ? Math.max(0, Number(paymentInvoice.amount) - paidSoFar)
+    : 0;
 
   const loadInvoices = useCallback(async () => {
     setLoading(true);
@@ -164,7 +173,9 @@ function InvoicesTab({
       const res = await fetchInvoices(params);
       const items = Array.isArray(res) ? res : (res as Record<string, unknown>).items as Invoice[] || [];
       setInvoices(items);
-    } catch {
+    } catch (e) {
+      console.error(e);
+      /* TODO: toast */
       setInvoices([]);
     } finally {
       setLoading(false);
@@ -203,14 +214,27 @@ function InvoicesTab({
   };
 
   const openPaymentModal = async (inv: Invoice) => {
+    // Limpa pagamentos da fatura anterior IMEDIATAMENTE para evitar que
+    // paidSoFar/remainingBalance usem state stale enquanto fetchPayments resolve.
+    setPayments([]);
     setPaymentInvoice(inv);
     setPaymentForm({ amount: String(inv.amount), method: 'pix' });
+    setPaymentFormError('');
+    // Gera um idempotency-key novo ao abrir o modal — protege contra
+    // duplo clique / retries de rede dentro da mesma "intenção" de pagamento.
+    setPaymentIdempotencyKey(
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `pay-${inv.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
     setLoadingPayments(true);
     try {
       const res = await fetchPayments(inv.id);
       const items = Array.isArray(res) ? res : (res as Record<string, unknown>).items as Payment[] || [];
       setPayments(items);
-    } catch {
+    } catch (e) {
+      console.error(e);
+      /* TODO: toast */
       setPayments([]);
     } finally {
       setLoadingPayments(false);
@@ -220,13 +244,32 @@ function InvoicesTab({
   const handleCreatePayment = async (e: FormEvent) => {
     e.preventDefault();
     if (!paymentInvoice) return;
-    setCreatingPayment(true);
+    setPaymentFormError('');
     setError('');
+
+    const amount = parseFloat(paymentForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPaymentFormError('Valor deve ser maior que zero.');
+      return;
+    }
+    // Tolerância de 1 centavo p/ arredondamentos
+    if (amount > remainingBalance + 0.005) {
+      setPaymentFormError(
+        `Valor (R$ ${amount.toFixed(2)}) excede o saldo devedor (R$ ${remainingBalance.toFixed(2)}).`,
+      );
+      return;
+    }
+
+    setCreatingPayment(true);
     try {
-      await createPayment(paymentInvoice.id, {
-        amount: parseFloat(paymentForm.amount),
-        method: paymentForm.method,
-      });
+      await createPayment(
+        paymentInvoice.id,
+        {
+          amount,
+          method: paymentForm.method,
+        },
+        paymentIdempotencyKey,
+      );
       setSuccess('Pagamento registrado!');
       setPaymentInvoice(null);
       loadInvoices();
@@ -239,6 +282,19 @@ function InvoicesTab({
 
   const handleMarkStatus = async (inv: Invoice, newStatus: string) => {
     setError('');
+    // Confirmação dupla para CANCELAR fatura (operação destrutiva).
+    // TODO Wave 4: trocar window.confirm por ConfirmDialog unificado.
+    if (newStatus === 'cancelled') {
+      const valor = Number(inv.amount).toFixed(2);
+      const ok1 = window.confirm(
+        `Cancelar a fatura #${inv.id} no valor de R$ ${valor}? Essa ação marca a fatura como cancelada e pode liberar mensalidade.`,
+      );
+      if (!ok1) return;
+      const ok2 = window.confirm(
+        `Confirmar definitivamente o cancelamento da fatura #${inv.id} (R$ ${valor})?`,
+      );
+      if (!ok2) return;
+    }
     try {
       await updateInvoice(inv.id, { status: newStatus });
       loadInvoices();
@@ -474,16 +530,36 @@ function InvoicesTab({
               </div>
             ) : null}
 
+            {/* Saldo devedor (informativo) */}
+            <div className="mb-3 text-xs text-zinc-400">
+              <span>Total da fatura: </span>
+              <span className="text-zinc-200 font-medium">R$ {Number(paymentInvoice.amount).toFixed(2)}</span>
+              <span className="mx-2">·</span>
+              <span>Já pago: </span>
+              <span className="text-zinc-200 font-medium">R$ {paidSoFar.toFixed(2)}</span>
+              <span className="mx-2">·</span>
+              <span>Saldo devedor: </span>
+              <span className="text-yellow-400 font-medium">R$ {remainingBalance.toFixed(2)}</span>
+            </div>
+
             <form onSubmit={handleCreatePayment} className="space-y-3">
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Valor (R$)</label>
                 <input
                   type="number"
                   step="0.01"
+                  min="0.01"
+                  max={remainingBalance}
                   className={inputClass}
                   value={paymentForm.amount}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                  onChange={(e) => {
+                    setPaymentForm({ ...paymentForm, amount: e.target.value });
+                    if (paymentFormError) setPaymentFormError('');
+                  }}
                 />
+                {paymentFormError && (
+                  <p className="text-red-400 text-xs mt-1">{paymentFormError}</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Metodo</label>
@@ -551,7 +627,9 @@ function CouponsTab({ inputClass }: { inputClass: string }) {
       const res = await fetchCoupons();
       const items = Array.isArray(res) ? res : (res as Record<string, unknown>).items as Coupon[] || [];
       setCoupons(items);
-    } catch {
+    } catch (e) {
+      console.error(e);
+      /* TODO: toast */
       setCoupons([]);
     } finally {
       setLoading(false);
@@ -570,12 +648,21 @@ function CouponsTab({ inputClass }: { inputClass: string }) {
       setError('Codigo e valor do desconto sao obrigatorios.');
       return;
     }
+    const discountValue = parseFloat(form.discount_value);
+    if (!Number.isFinite(discountValue) || discountValue < 0) {
+      setError('Valor do desconto deve ser maior ou igual a zero.');
+      return;
+    }
+    if (form.discount_type === 'percentage' && discountValue > 100) {
+      setError('Desconto percentual nao pode ser maior que 100%.');
+      return;
+    }
     setCreating(true);
     try {
       await createCoupon({
         code: form.code,
         discount_type: form.discount_type,
-        discount_value: parseFloat(form.discount_value),
+        discount_value: discountValue,
         max_usages: form.max_usages ? parseInt(form.max_usages) : 0,
         expires_at: form.expires_at || null,
         description: form.description,
@@ -592,6 +679,19 @@ function CouponsTab({ inputClass }: { inputClass: string }) {
 
   const handleToggleActive = async (coupon: Coupon) => {
     setError('');
+    // Confirmação dupla apenas para DESATIVAR (operação que afeta usuários).
+    // Reativar é menos crítico.
+    // TODO Wave 4: trocar window.confirm por ConfirmDialog unificado.
+    if (coupon.is_active) {
+      const ok1 = window.confirm(
+        `Desativar o cupom ${coupon.code}? Usuários não poderão mais aplicá-lo.`,
+      );
+      if (!ok1) return;
+      const ok2 = window.confirm(
+        `Confirmar definitivamente a desativação do cupom ${coupon.code}?`,
+      );
+      if (!ok2) return;
+    }
     try {
       await updateCoupon(coupon.id, { is_active: !coupon.is_active });
       loadCoupons();
@@ -634,6 +734,8 @@ function CouponsTab({ inputClass }: { inputClass: string }) {
             <input
               type="number"
               step="0.01"
+              min="0"
+              max={form.discount_type === 'percentage' ? 100 : undefined}
               className={inputClass}
               value={form.discount_value}
               onChange={(e) => setForm({ ...form, discount_value: e.target.value })}
@@ -788,7 +890,9 @@ function LoyaltyTab({
         ? histRes
         : (histRes as Record<string, unknown>).items as LoyaltyTransaction[] || [];
       setHistory(items);
-    } catch {
+    } catch (e) {
+      console.error(e);
+      /* TODO: toast */
       setBalance(null);
       setHistory([]);
     } finally {
@@ -808,10 +912,27 @@ function LoyaltyTab({
       setError('Selecione um estabelecimento e informe os pontos.');
       return;
     }
+    const points = parseInt(txForm.points);
+    if (!Number.isFinite(points) || Number.isNaN(points) || points <= 0) {
+      setError('Pontos devem ser um número inteiro maior que zero.');
+      return;
+    }
+    // Confirmação dupla para DÉBITO (subtrai saldo do cliente).
+    // TODO Wave 4: trocar window.confirm por ConfirmDialog unificado.
+    if (txForm.type === 'debit') {
+      const ok1 = window.confirm(
+        `Debitar ${points} pontos do saldo de fidelidade? Saldo atual: ${balance ?? 0}.`,
+      );
+      if (!ok1) return;
+      const ok2 = window.confirm(
+        `Confirmar definitivamente o débito de ${points} pontos?`,
+      );
+      if (!ok2) return;
+    }
     setSubmitting(true);
     try {
       const estId = Number(selectedEstId);
-      const payload = { points: parseInt(txForm.points), reason: txForm.reason };
+      const payload = { points, reason: txForm.reason };
       if (txForm.type === 'credit') {
         await creditLoyalty(estId, payload);
       } else {

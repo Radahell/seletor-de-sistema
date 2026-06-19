@@ -294,7 +294,7 @@ export default function AdminEstablishmentsPage() {
                         <tr key={est.id} className="hover:bg-zinc-800/50">
                           <td className="p-3 text-white font-medium">{est.name}</td>
                           <td className="p-3 text-zinc-300">{(est as Record<string, unknown>).owner_name as string || '—'}</td>
-                          <td className="p-3 text-zinc-300">{est.email || '—'}</td>
+                          <td className="p-3 text-zinc-300">{est.contact_email || '—'}</td>
                           <td className="p-3">
                             {est.is_active ? (
                               <span className="bg-green-500/10 text-green-500 px-2 py-0.5 rounded text-xs font-medium">

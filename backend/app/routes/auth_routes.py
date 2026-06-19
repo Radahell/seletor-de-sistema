@@ -17,6 +17,7 @@ import os
 import re
 import secrets
 import traceback
+from datetime import timezone
 from functools import wraps
 from typing import Any, Dict, Optional
 
@@ -49,6 +50,8 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 ENV = os.getenv("ENV", "dev")
 JWT_SECRET = os.getenv("JWT_SECRET", "")
+if not JWT_SECRET or len(JWT_SECRET) < 32:
+    raise RuntimeError("JWT_SECRET ausente ou < 32 chars. Defina em produção.")
 JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "24"))
 
 
@@ -65,11 +68,12 @@ def _create_token(user_id: int, email: str, expires_hours: int = None) -> str:
     if expires_hours is None:
         expires_hours = JWT_EXPIRY_HOURS
 
+    now_utc = datetime.datetime.now(timezone.utc)
     payload = {
         "user_id": user_id,
         "email": email,
-        "exp": datetime.datetime.now() + datetime.timedelta(hours=expires_hours),
-        "iat": datetime.datetime.now(),
+        "exp": now_utc + datetime.timedelta(hours=expires_hours),
+        "iat": now_utc,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
@@ -96,10 +100,14 @@ def _get_client_info() -> Dict[str, Any]:
 
 
 def _create_session(user_id: int, token: str, tenant_id: int = None) -> None:
-    """Cria registro de sessão no banco."""
+    """Cria registro de sessão no banco.
+
+    expires_at é gerado pelo MySQL usando UTC_TIMESTAMP(), garantindo
+    consistência com as comparações em login_required (que também usam
+    UTC_TIMESTAMP()), independente do timezone do servidor MySQL.
+    """
     client = _get_client_info()
     token_hash = _hash_token(token)
-    expires_at = datetime.datetime.now() + datetime.timedelta(hours=JWT_EXPIRY_HOURS)
 
     execute_sql(
         """
@@ -108,7 +116,8 @@ def _create_session(user_id: int, token: str, tenant_id: int = None) -> None:
             ip_address, user_agent, current_tenant_id, expires_at
         ) VALUES (
             :user_id, :token_hash, :device_name, :device_type,
-            :ip_address, :user_agent, :tenant_id, :expires_at
+            :ip_address, :user_agent, :tenant_id,
+            UTC_TIMESTAMP() + INTERVAL :expires_hours HOUR
         )
         """,
         {
@@ -119,7 +128,7 @@ def _create_session(user_id: int, token: str, tenant_id: int = None) -> None:
             "ip_address": client["ip_address"],
             "user_agent": client["user_agent"],
             "tenant_id": tenant_id,
-            "expires_at": expires_at,
+            "expires_hours": JWT_EXPIRY_HOURS,
         },
     )
 
@@ -129,7 +138,7 @@ def _revoke_session(token_hash: str, reason: str = None) -> None:
     execute_sql(
         """
         UPDATE user_sessions
-        SET revoked_at = NOW(), revoked_reason = :reason
+        SET revoked_at = UTC_TIMESTAMP(), revoked_reason = :reason
         WHERE token_hash = :token_hash AND revoked_at IS NULL
         """,
         {"token_hash": token_hash, "reason": reason},
@@ -195,7 +204,7 @@ def login_required(f):
             FROM user_sessions
             WHERE token_hash = :token_hash
               AND revoked_at IS NULL
-              AND expires_at > NOW()
+              AND expires_at > UTC_TIMESTAMP()
             """,
             {"token_hash": token_hash},
         )
@@ -217,7 +226,7 @@ def login_required(f):
 
         # Atualizar última atividade
         execute_sql(
-            "UPDATE user_sessions SET last_activity_at = NOW() WHERE id = :id",
+            "UPDATE user_sessions SET last_activity_at = UTC_TIMESTAMP() WHERE id = :id",
             {"id": session["id"]},
         )
 
@@ -526,7 +535,7 @@ def logout_all():
         execute_sql(
             """
             UPDATE user_sessions
-            SET revoked_at = NOW(), revoked_reason = 'logout_all'
+            SET revoked_at = UTC_TIMESTAMP(), revoked_reason = 'logout_all'
             WHERE user_id = :user_id AND revoked_at IS NULL
             """,
             {"user_id": g.current_user_id},
@@ -737,7 +746,7 @@ def change_password():
         execute_sql(
             """
             UPDATE user_sessions
-            SET revoked_at = NOW(), revoked_reason = 'password_change'
+            SET revoked_at = UTC_TIMESTAMP(), revoked_reason = 'password_change'
             WHERE user_id = :user_id
               AND id != :current_session
               AND revoked_at IS NULL
@@ -853,7 +862,9 @@ def verify_email():
         # Verificar expiração (24h)
         if user.get("email_verification_sent_at"):
             sent_at = user["email_verification_sent_at"]
-            if (datetime.datetime.now() - sent_at).total_seconds() > 86400:
+            if sent_at.tzinfo is None:
+                sent_at = sent_at.replace(tzinfo=timezone.utc)
+            if (datetime.datetime.now(timezone.utc) - sent_at).total_seconds() > 86400:
                 return jsonify({"error": "Token expirado. Solicite um novo."}), 400
 
         # Já verificado?
@@ -885,8 +896,11 @@ def resend_verification():
 
         # Rate limit: 1 a cada 2 minutos
         last_sent = user.get("email_verification_sent_at")
-        if last_sent and (datetime.datetime.now() - last_sent).total_seconds() < 120:
-            return jsonify({"error": "Aguarde 2 minutos para reenviar"}), 429
+        if last_sent:
+            if last_sent.tzinfo is None:
+                last_sent = last_sent.replace(tzinfo=timezone.utc)
+            if (datetime.datetime.now(timezone.utc) - last_sent).total_seconds() < 120:
+                return jsonify({"error": "Aguarde 2 minutos para reenviar"}), 429
 
         token = secrets.token_urlsafe(32)
         execute_sql(

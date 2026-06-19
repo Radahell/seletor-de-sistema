@@ -126,6 +126,7 @@ export interface Establishment {
   state?: string;
   phone?: string;
   email?: string;
+  contact_email?: string;
   created_at?: string;
   [key: string]: unknown;
 }
@@ -337,8 +338,18 @@ export async function fetchPayments(invoiceId: number) {
   return adminRequest(`/invoices/${invoiceId}/payments`);
 }
 
-export async function createPayment(invoiceId: number, payload: Record<string, unknown>) {
-  return adminRequest(`/invoices/${invoiceId}/payments`, { method: 'POST', body: JSON.stringify(payload) });
+export async function createPayment(
+  invoiceId: number,
+  payload: Record<string, unknown>,
+  idempotencyKey?: string,
+) {
+  const headers: Record<string, string> = {};
+  if (idempotencyKey) headers['X-Idempotency-Key'] = idempotencyKey;
+  return adminRequest(`/invoices/${invoiceId}/payments`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers,
+  });
 }
 
 // ─── Billing: Coupons ───────────────────────────────────────────────
