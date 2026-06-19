@@ -1,48 +1,184 @@
-import { useEffect, useState } from 'react';
-import { Loader2, ScrollText, Monitor, Search } from 'lucide-react';
-import { fetchAuditLogs, fetchActiveSessions, revokeSession } from '../../services/adminApi';
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Loader2, Monitor, ScrollText, Search } from 'lucide-react';
+import { fetchActiveSessions, fetchAuditLogs, revokeSession } from '../../services/adminApi';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
 
 const CATEGORIES = [
+  { value: '', label: 'Todas as categorias' },
   { value: 'access', label: 'Acessos e logout' },
   { value: 'keys', label: 'Rotacoes de chave' },
   { value: 'permissions', label: 'Alteracoes de permissao' },
   { value: 'login', label: 'Tentativas de login' },
 ];
 
-const INPUT_CLS = 'w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-yellow-500 focus:outline-none';
+const INPUT_CLS =
+  'w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-yellow-500 focus:outline-none';
+
+interface AuditLog {
+  id: number;
+  action: string;
+  actor_id: number | null;
+  actor_name: string | null;
+  target_admin_id: number | null;
+  target_name: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  request_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string | null;
+}
+
+interface SessionRow {
+  jti: string;
+  created_at: string | null;
+  last_used_at: string | null;
+  expires_at: string | null;
+  is_current: boolean;
+}
 
 function formatDate(value: string | null | undefined) {
   if (!value) return '—';
-  try { return new Date(value).toLocaleString('pt-BR'); } catch { return value; }
+  try {
+    return new Date(value).toLocaleString('pt-BR');
+  } catch {
+    return value;
+  }
+}
+
+function MetadataBlock({ data }: { data: Record<string, unknown> | null }) {
+  if (!data || Object.keys(data).length === 0) {
+    return <p className="text-xs text-zinc-500 italic">Sem metadados.</p>;
+  }
+  return (
+    <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs">
+      {Object.entries(data).map(([key, value]) => (
+        <div key={key} className="flex gap-2">
+          <dt className="text-zinc-400 font-mono shrink-0">{key}:</dt>
+          <dd className="text-zinc-200 break-all">
+            {typeof value === 'object'
+              ? JSON.stringify(value)
+              : String(value ?? '—')}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function ExpandableRow({ log }: { log: AuditLog }) {
+  const [open, setOpen] = useState(false);
+  const hasDetails =
+    Boolean(log.metadata && Object.keys(log.metadata).length > 0) ||
+    Boolean(log.ip_address || log.user_agent || log.request_id);
+  return (
+    <>
+      <tr className={open ? 'bg-zinc-950/60' : undefined}>
+        <td className="p-3 align-top">
+          {hasDetails && (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="text-zinc-400 hover:text-yellow-400"
+              aria-label={open ? 'Recolher' : 'Expandir'}
+            >
+              {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </button>
+          )}
+        </td>
+        <td className="p-3 text-zinc-300 whitespace-nowrap align-top">{formatDate(log.created_at)}</td>
+        <td className="p-3 text-white align-top font-mono text-xs">{log.action}</td>
+        <td className="p-3 text-zinc-400 align-top">{log.actor_name || log.actor_id || '—'}</td>
+        <td className="p-3 text-zinc-400 align-top">{log.target_name || log.target_admin_id || '—'}</td>
+        <td className="p-3 text-zinc-400 align-top font-mono text-xs">{log.ip_address || '—'}</td>
+      </tr>
+      {open && hasDetails && (
+        <tr className="bg-zinc-950/60">
+          <td colSpan={6} className="px-6 pb-4 pt-1">
+            <div className="space-y-3 border-l-2 border-yellow-500/30 pl-4">
+              {(log.ip_address || log.user_agent || log.request_id) && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  {log.ip_address && (
+                    <div>
+                      <span className="text-zinc-500 uppercase tracking-wider">IP</span>
+                      <div className="text-zinc-200 font-mono">{log.ip_address}</div>
+                    </div>
+                  )}
+                  {log.request_id && (
+                    <div>
+                      <span className="text-zinc-500 uppercase tracking-wider">Request ID</span>
+                      <div className="text-zinc-200 font-mono break-all">{log.request_id}</div>
+                    </div>
+                  )}
+                  {log.user_agent && (
+                    <div>
+                      <span className="text-zinc-500 uppercase tracking-wider">User Agent</span>
+                      <div className="text-zinc-200 break-all">{log.user_agent}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div>
+                <span className="text-zinc-500 uppercase tracking-wider text-xs">Metadados</span>
+                <div className="mt-1">
+                  <MetadataBlock data={log.metadata} />
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
 }
 
 export default function AdminAuditPage() {
   const { adminLogout } = useAdminAuth();
-  const [logs, setLogs] = useState<any[]>([]);
-  const [category, setCategory] = useState('access');
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [category, setCategory] = useState('');
+  const [actionFilter, setActionFilter] = useState('');
+  const [actorFilter, setActorFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [search, setSearch] = useState('');
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadLogs(category, pagination.page, search);
-    loadSessions();
-  }, [category, pagination.page]);
+  const filterPayload = useMemo(
+    () => ({
+      category,
+      action: actionFilter,
+      actor: actorFilter,
+      date_from: dateFrom,
+      date_to: dateTo,
+      q: search,
+    }),
+    [category, actionFilter, actorFilter, dateFrom, dateTo, search],
+  );
 
-  async function loadLogs(cat: string, page: number, q: string) {
+  useEffect(() => {
+    loadLogs(pagination.page, filterPayload);
+    loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pagination.page]);
+
+  async function loadLogs(page: number, filters: typeof filterPayload) {
     setLoading(true);
     setError(null);
     try {
-      const params: Record<string, string> = { category: cat, page: String(page) };
-      if (q) params.q = q;
+      const params: Record<string, string> = { page: String(page) };
+      if (filters.category) params.category = filters.category;
+      if (filters.action) params.action = filters.action;
+      if (filters.actor) params.actor = filters.actor;
+      if (filters.date_from) params.date_from = filters.date_from;
+      if (filters.date_to) params.date_to = filters.date_to;
+      if (filters.q) params.q = filters.q;
       const data: any = await fetchAuditLogs(params);
-      setLogs(data.items ?? []);
+      setLogs((data.items ?? []) as AuditLog[]);
       setPagination((prev) => ({ ...prev, ...(data.pagination || {}), page: data.pagination?.page || page }));
     } catch {
       setError('Nao foi possivel carregar os logs.');
@@ -56,7 +192,7 @@ export default function AdminAuditPage() {
     setSessionsError(null);
     try {
       const data = await fetchActiveSessions();
-      setSessions(data as any[]);
+      setSessions(data as SessionRow[]);
     } catch {
       setSessionsError('Nao foi possivel carregar as sessoes.');
     } finally {
@@ -81,7 +217,25 @@ export default function AdminAuditPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPagination((prev) => ({ ...prev, page: 1 }));
-    loadLogs(category, 1, search);
+    loadLogs(1, filterPayload);
+  };
+
+  const handleReset = () => {
+    setCategory('');
+    setActionFilter('');
+    setActorFilter('');
+    setDateFrom('');
+    setDateTo('');
+    setSearch('');
+    setPagination((prev) => ({ ...prev, page: 1 }));
+    loadLogs(1, {
+      category: '',
+      action: '',
+      actor: '',
+      date_from: '',
+      date_to: '',
+      q: '',
+    });
   };
 
   return (
@@ -91,7 +245,9 @@ export default function AdminAuditPage() {
           <ScrollText className="w-6 h-6 text-purple-400" />
           Auditoria
         </h1>
-        <p className="text-sm text-zinc-400 mt-1">Acompanhe acessos, rotacao de chaves, mudancas de permissao e tentativas de login.</p>
+        <p className="text-sm text-zinc-400 mt-1">
+          Acompanhe acessos, rotacao de chaves, mudancas de permissao e tentativas de login.
+        </p>
       </div>
 
       {/* Sessions */}
@@ -125,7 +281,7 @@ export default function AdminAuditPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {sessions.map((s: any) => (
+                {sessions.map((s) => (
                   <tr key={s.jti}>
                     <td className="p-2 text-zinc-300">{formatDate(s.created_at)}</td>
                     <td className="p-2 text-zinc-300">{s.last_used_at ? formatDate(s.last_used_at) : '—'}</td>
@@ -150,28 +306,85 @@ export default function AdminAuditPage() {
       </div>
 
       {/* Filters */}
-      <form onSubmit={handleSearch} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+      <form onSubmit={handleSearch} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm text-zinc-400 mb-1">Categoria</label>
             <select
               value={category}
-              onChange={(e) => { setCategory(e.target.value); setPagination((p) => ({ ...p, page: 1 })); }}
+              onChange={(e) => setCategory(e.target.value)}
               className={INPUT_CLS}
             >
-              {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              {CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">Buscar</label>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Email, acao ou IP" className={INPUT_CLS} />
+            <label className="block text-sm text-zinc-400 mb-1">Acao exata</label>
+            <input
+              value={actionFilter}
+              onChange={(e) => setActionFilter(e.target.value)}
+              placeholder="ex: mfa.enabled"
+              className={INPUT_CLS}
+            />
           </div>
-          <div className="flex items-end">
-            <button type="submit" className="px-4 py-2 bg-yellow-500 text-zinc-900 font-semibold rounded-lg hover:bg-yellow-400 transition-colors w-full flex items-center justify-center gap-2">
-              <Search className="w-4 h-4" />
-              Aplicar filtros
-            </button>
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1">Ator (id, nome ou email)</label>
+            <input
+              value={actorFilter}
+              onChange={(e) => setActorFilter(e.target.value)}
+              placeholder="ex: 12 ou maria@..."
+              className={INPUT_CLS}
+            />
           </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1">De</label>
+            <input
+              type="datetime-local"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className={INPUT_CLS}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1">Ate</label>
+            <input
+              type="datetime-local"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className={INPUT_CLS}
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm text-zinc-400 mb-1">Busca livre</label>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Acao, ator, IP ou request id"
+              className={INPUT_CLS}
+            />
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button
+            type="button"
+            onClick={handleReset}
+            className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 text-sm transition-colors"
+          >
+            Limpar
+          </button>
+          <button
+            type="submit"
+            className="px-4 py-2 bg-yellow-500 text-zinc-900 font-semibold rounded-lg hover:bg-yellow-400 transition-colors flex items-center gap-2"
+          >
+            <Search className="w-4 h-4" />
+            Aplicar filtros
+          </button>
         </div>
       </form>
 
@@ -185,25 +398,20 @@ export default function AdminAuditPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-zinc-950 text-zinc-400 uppercase text-xs">
                 <tr>
+                  <th className="p-3 w-8"></th>
                   <th className="p-3">Data</th>
                   <th className="p-3">Acao</th>
                   <th className="p-3">Ator</th>
                   <th className="p-3">Alvo</th>
-                  <th className="p-3">Detalhes</th>
+                  <th className="p-3">IP</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {logs.map((log: any) => (
-                  <tr key={log.id}>
-                    <td className="p-3 text-zinc-300 whitespace-nowrap">{formatDate(log.created_at)}</td>
-                    <td className="p-3 text-white">{log.action}</td>
-                    <td className="p-3 text-zinc-400">{log.actor_name || log.actor_id || '—'}</td>
-                    <td className="p-3 text-zinc-400">{log.target_name || log.target_admin_id || '—'}</td>
-                    <td className="p-3 text-zinc-500 text-xs font-mono max-w-xs truncate">{JSON.stringify(log.metadata || {})}</td>
-                  </tr>
+                {logs.map((log) => (
+                  <ExpandableRow key={log.id} log={log} />
                 ))}
                 {logs.length === 0 && (
-                  <tr><td colSpan={5} className="p-4 text-center text-zinc-500">Nenhum evento encontrado.</td></tr>
+                  <tr><td colSpan={6} className="p-4 text-center text-zinc-500">Nenhum evento encontrado.</td></tr>
                 )}
               </tbody>
             </table>

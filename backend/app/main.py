@@ -4,13 +4,15 @@ import os
 import re
 import traceback
 import datetime
+import logging
+import uuid
 from datetime import timezone
 import jwt
 from functools import wraps
 from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, g, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import create_engine, text
@@ -52,6 +54,49 @@ if not os.path.isdir(DOWNLOADS_DIR):
     print(f"⚠️ DOWNLOADS_DIR não encontrado: {DOWNLOADS_DIR}", flush=True)
 
 CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=False)
+
+
+# ------------------------------------------------------------
+# Request ID middleware (observabilidade / correlação de logs)
+# Espelho da Wave 3 #5 do Admin Global.
+# ------------------------------------------------------------
+_request_logger = logging.getLogger("seletor.request")
+
+
+@app.before_request
+def _assign_request_id():
+    """Anexa um request_id a cada request (UUID4 ou X-Request-ID validado)."""
+    incoming = request.headers.get("X-Request-ID")
+    if incoming and 8 <= len(incoming) <= 64 and all(
+        ch.isalnum() or ch in "-_" for ch in incoming
+    ):
+        g.request_id = incoming
+    else:
+        g.request_id = uuid.uuid4().hex
+
+    _request_logger.info(
+        "request_start rid=%s method=%s path=%s ip=%s",
+        g.request_id,
+        request.method,
+        request.path,
+        request.remote_addr,
+    )
+
+
+@app.after_request
+def _expose_request_id(response):
+    rid = getattr(g, "request_id", None)
+    if rid:
+        response.headers.setdefault("X-Request-ID", rid)
+        _request_logger.info(
+            "request_end rid=%s method=%s path=%s status=%s",
+            rid,
+            request.method,
+            request.path,
+            response.status_code,
+        )
+    return response
+
 
 # ------------------------------------------------------------
 # STARTUP (MASTER DB do Seletor)
@@ -95,6 +140,17 @@ def token_required(f):
 # Decorator compartilhado: exige login (sessao valida) + super admin.
 # Importado aqui para ser aplicado em todas as rotas /api/super-admin/*.
 from app.decorators import super_admin_required  # noqa: E402
+
+
+# ------------------------------------------------------------
+# Validações reforçadas (slug de tenant + email de admin)
+# ------------------------------------------------------------
+_TENANT_SLUG_RE = re.compile(r"^[a-z0-9-]{3,50}$")
+_EMAIL_RE = re.compile(
+    r"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$",
+    re.IGNORECASE,
+)
+_RESERVED_SLUGS = {"admin", "api", "www", "app", "superadmin", "master", "root"}
 
 
 # ------------------------------------------------------------
@@ -356,6 +412,15 @@ def create_tenant():
             return jsonify({"error": "Slug e systemSlug são obrigatórios"}), 400
 
         slug = validate_slug(data["slug"])
+
+        # Validação estrita: regex e tamanho (3-50) + lista de reservados.
+        if not _TENANT_SLUG_RE.match(slug):
+            return jsonify({
+                "error": "Slug inválido. Use 3 a 50 caracteres [a-z0-9-]."
+            }), 400
+        if slug in _RESERVED_SLUGS:
+            return jsonify({"error": "Slug reservado, escolha outro."}), 400
+
         system_slug = (data["systemSlug"] or "").strip().lower()
 
         # Valida system
@@ -440,6 +505,11 @@ def create_tenant():
             admin_pass = data.get("adminPassword")
             admin_name = data.get("adminName", "Super Admin")
             admin_nickname = data.get("adminNickname", "Super Admin")
+
+            # Validação de email do admin (regex simples, case-insensitive).
+            if not isinstance(admin_email, str) or not _EMAIL_RE.match(admin_email.strip()):
+                return jsonify({"error": "adminEmail inválido."}), 400
+            admin_email = admin_email.strip().lower()
 
             # Validação de senha do admin (NÃO aceitar default fraco)
             if not isinstance(admin_pass, str) or not admin_pass.strip():

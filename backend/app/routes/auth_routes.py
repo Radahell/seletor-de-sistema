@@ -16,10 +16,13 @@ import hashlib
 import os
 import re
 import secrets
+import threading
+import time
 import traceback
+from collections import defaultdict, deque
 from datetime import timezone
 from functools import wraps
-from typing import Any, Dict, Optional
+from typing import Any, Deque, Dict, Optional
 
 import jwt
 from flask import Blueprint, current_app, g, jsonify, request
@@ -47,6 +50,37 @@ def _upgrade_password_hash(user_id: int, password: str) -> None:
     )
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+
+# ------------------------------------------------------------
+# Rate limiter in-process (defesa contra enumeração de email no /register).
+# Janela deslizante simples por IP. Para deploy multi-worker, considerar
+# substituir por flask-limiter + Redis no futuro.
+# ------------------------------------------------------------
+_RL_REGISTER_WINDOW_S = 3600           # 1 hora
+_RL_REGISTER_MAX = 5                   # 5 tentativas por IP
+_rl_register_hits: Dict[str, Deque[float]] = defaultdict(deque)
+_rl_register_lock = threading.Lock()
+
+
+def _rate_limit_register(ip: str) -> bool:
+    """Retorna True se o IP excedeu o limite (5/hora). False = pode prosseguir."""
+    if not ip:
+        return False
+    now = time.monotonic()
+    cutoff = now - _RL_REGISTER_WINDOW_S
+    with _rl_register_lock:
+        bucket = _rl_register_hits[ip]
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+        if len(bucket) >= _RL_REGISTER_MAX:
+            return True
+        bucket.append(now)
+        # Limpeza preguiçosa para não vazar memória se o mapa crescer.
+        if len(_rl_register_hits) > 10_000:
+            for stale_ip in [k for k, v in _rl_register_hits.items() if not v or v[-1] < cutoff]:
+                _rl_register_hits.pop(stale_ip, None)
+    return False
 
 ENV = os.getenv("ENV", "dev")
 JWT_SECRET = os.getenv("JWT_SECRET", "")
@@ -249,6 +283,13 @@ def login_required(f):
 def register():
     """Criar nova conta."""
     try:
+        # Rate limit: 5 registros/hora por IP (defesa contra enumeração de email).
+        client_ip = request.remote_addr or ""
+        if _rate_limit_register(client_ip):
+            return jsonify({
+                "error": "Muitas tentativas de registro. Tente novamente mais tarde."
+            }), 429
+
         data = request.get_json(silent=True) or {}
 
         name = (data.get("name") or "").strip()
