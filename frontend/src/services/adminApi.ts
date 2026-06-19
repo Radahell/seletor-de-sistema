@@ -121,12 +121,26 @@ export interface Establishment {
   name: string;
   slug: string;
   is_active: boolean;
+  owner_name?: string;
   address?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
   city?: string;
   state?: string;
+  postal_code?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   phone?: string;
   email?: string;
   contact_email?: string;
+  contact_phone?: string;
+  plan_name?: string;
+  camera_count?: number;
+  court_count?: number;
+  allowed_ip?: string;
+  api_key?: string;
   created_at?: string;
   [key: string]: unknown;
 }

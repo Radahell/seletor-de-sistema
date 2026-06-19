@@ -76,6 +76,10 @@ export default function AdminEstablishmentDetailPage() {
   const [resetPwd, setResetPwd] = useState('');
   const [resetPwdMsg, setResetPwdMsg] = useState('');
 
+  // ── Rotated API key modal ──
+  const [rotatedApiKey, setRotatedApiKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
+
   const inputClass =
     'w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-yellow-500 focus:outline-none';
 
@@ -157,18 +161,40 @@ export default function AdminEstablishmentDetailPage() {
     e.preventDefault();
     setSecMsg('');
     setSecErr('');
+
+    // Confirmacoes ricas para acoes destrutivas.
+    if (secForm.rotate_key) {
+      const ok = window.confirm(
+        `Rotacionar a chave de API de "${est?.name ?? 'este estabelecimento'}"?\n\n` +
+          'A chave atual sera invalidada imediatamente. Qualquer integracao que ainda use a chave antiga deixara de funcionar ate ser reconfigurada com a nova chave.\n\n' +
+          'A nova chave sera exibida apenas uma vez apos a confirmacao.',
+      );
+      if (!ok) return;
+    }
+    if (secForm.is_active !== est?.is_active) {
+      const message = secForm.is_active
+        ? `Reativar o estabelecimento "${est?.name ?? ''}"?\n\nUsuarios e gestores vinculados voltarao a ter acesso ao sistema.`
+        : `Desativar o estabelecimento "${est?.name ?? ''}"?\n\nTodos os usuarios e gestores vinculados perderao acesso imediatamente.`;
+      if (!window.confirm(message)) return;
+    }
+
     setSavingSec(true);
     try {
-      await updateEstablishmentSecurity(estId, {
+      const result = (await updateEstablishmentSecurity(estId, {
         allowed_ip: secForm.allowed_ip,
         rotate_key: secForm.rotate_key,
-      });
+      })) as { api_key?: string } | undefined;
       if (secForm.is_active !== est?.is_active) {
         if (secForm.is_active) {
           await activateEstablishment(estId);
         } else {
           await deactivateEstablishment(estId);
         }
+      }
+      // Apos rotacionar, mostra a chave gerada em modal para o operador copiar/salvar.
+      if (secForm.rotate_key && result?.api_key) {
+        setRotatedApiKey(result.api_key);
+        setCopiedKey(false);
       }
       setSecMsg('Seguranca atualizada com sucesso!');
       setSecForm((prev) => ({ ...prev, rotate_key: false }));
@@ -177,6 +203,18 @@ export default function AdminEstablishmentDetailPage() {
       setSecErr(err instanceof Error ? err.message : 'Erro ao salvar seguranca.');
     } finally {
       setSavingSec(false);
+    }
+  };
+
+  const handleCopyApiKey = async () => {
+    if (!rotatedApiKey) return;
+    try {
+      await navigator.clipboard.writeText(rotatedApiKey);
+      setCopiedKey(true);
+      window.setTimeout(() => setCopiedKey(false), 2500);
+    } catch {
+      // Fallback: seleciona o texto manualmente, sem quebrar a UI.
+      setCopiedKey(false);
     }
   };
 
@@ -231,7 +269,9 @@ export default function AdminEstablishmentDetailPage() {
   };
 
   const handleDeleteManager = async (mgrId: number) => {
-    if (!confirm('Tem certeza que deseja remover este gestor?')) return;
+    const mgr = managers.find((m) => m.id === mgrId);
+    const label = mgr ? `"${mgr.name}" (${mgr.email})` : 'este gestor';
+    if (!window.confirm(`Remover ${label}?\n\nEsta acao nao pode ser desfeita. O gestor perdera acesso imediatamente.`)) return;
     try {
       await deleteEstablishmentManager(estId, mgrId);
       setMgrMsg('Gestor removido.');
@@ -649,6 +689,55 @@ export default function AdminEstablishmentDetailPage() {
           </div>
         )}
       </div>
+
+      {/* ── Modal: nova chave de API rotacionada ── */}
+      {rotatedApiKey && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rotated-key-title"
+        >
+          <div className="bg-zinc-900 border border-yellow-500/40 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h2
+              id="rotated-key-title"
+              className="text-lg font-semibold text-yellow-400 mb-2"
+            >
+              Nova chave de API gerada
+            </h2>
+            <p className="text-sm text-zinc-300 mb-3">
+              Salve esta chave em um local seguro agora. Por motivos de
+              seguranca, ela <strong>nao sera exibida novamente</strong>.
+            </p>
+            <div className="bg-zinc-950 border border-zinc-700 rounded-lg p-3 mb-3 break-all font-mono text-sm text-yellow-300 select-all">
+              {rotatedApiKey}
+            </div>
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4 text-xs text-red-200">
+              A chave anterior ja foi invalidada. Atualize todas as integracoes
+              antes de fechar este aviso.
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="px-4 py-2 bg-yellow-500 text-zinc-900 font-semibold rounded-lg hover:bg-yellow-400 transition-colors text-sm"
+                onClick={handleCopyApiKey}
+              >
+                {copiedKey ? 'Copiado!' : 'Copiar chave'}
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors text-sm"
+                onClick={() => {
+                  setRotatedApiKey(null);
+                  setCopiedKey(false);
+                }}
+              >
+                Ja salvei, fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

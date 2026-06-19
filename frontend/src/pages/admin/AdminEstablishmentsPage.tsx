@@ -18,9 +18,11 @@ interface Filters {
 
 interface CreateForm {
   name: string;
+  slug: string;
   owner_name: string;
   contact_phone: string;
   contact_email: string;
+  plan_name: string;
   allowed_ip: string;
   state: string;
   city: string;
@@ -28,13 +30,20 @@ interface CreateForm {
 
 const emptyForm: CreateForm = {
   name: '',
+  slug: '',
   owner_name: '',
   contact_phone: '',
   contact_email: '',
+  plan_name: '',
   allowed_ip: '',
   state: '',
   city: '',
 };
+
+type FieldErrors = Partial<Record<keyof CreateForm, string>>;
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export default function AdminEstablishmentsPage() {
   const navigate = useNavigate();
@@ -50,6 +59,7 @@ export default function AdminEstablishmentsPage() {
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   // ── Toggling state ──
   const [togglingId, setTogglingId] = useState<number | null>(null);
@@ -80,27 +90,51 @@ export default function AdminEstablishmentsPage() {
     setPage(1);
   };
 
+  const validateForm = (values: CreateForm): FieldErrors => {
+    const errors: FieldErrors = {};
+    if (!values.name.trim()) errors.name = 'Nome da quadra e obrigatorio.';
+    if (!values.owner_name.trim()) errors.owner_name = 'Responsavel e obrigatorio.';
+    if (!values.contact_email.trim()) {
+      errors.contact_email = 'Email de contato e obrigatorio.';
+    } else if (!EMAIL_RE.test(values.contact_email.trim())) {
+      errors.contact_email = 'Email invalido.';
+    }
+    if (!values.contact_phone.trim()) {
+      errors.contact_phone = 'Telefone de contato e obrigatorio.';
+    }
+    const slug = values.slug.trim();
+    if (slug && !SLUG_RE.test(slug)) {
+      errors.slug = 'Slug deve conter apenas letras minusculas, numeros e hifens.';
+    }
+    return errors;
+  };
+
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     setFormError('');
     setFormSuccess('');
-    if (!form.name.trim()) {
-      setFormError('Nome da quadra e obrigatorio.');
+    const errors = validateForm(form);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setFormError('Corrija os campos destacados antes de continuar.');
       return;
     }
     setCreating(true);
     try {
       await createEstablishment({
-        name: form.name,
-        owner_name: form.owner_name,
-        contact_phone: form.contact_phone,
-        contact_email: form.contact_email,
-        allowed_ip: form.allowed_ip,
-        state: form.state,
-        city: form.city,
+        name: form.name.trim(),
+        slug: form.slug.trim() || undefined,
+        owner_name: form.owner_name.trim(),
+        contact_phone: form.contact_phone.trim(),
+        contact_email: form.contact_email.trim(),
+        plan_name: form.plan_name.trim() || undefined,
+        allowed_ip: form.allowed_ip.trim() || undefined,
+        state: form.state.trim() || undefined,
+        city: form.city.trim() || undefined,
       });
       setFormSuccess('Estabelecimento criado com sucesso!');
       setForm(emptyForm);
+      setFieldErrors({});
       loadList();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : 'Erro ao criar estabelecimento.');
@@ -110,6 +144,10 @@ export default function AdminEstablishmentsPage() {
   };
 
   const handleToggleActive = async (est: Establishment) => {
+    const message = est.is_active
+      ? `Desativar o estabelecimento "${est.name}"?\n\nTodos os usuarios e gestores vinculados perderao acesso ao sistema ate que ele seja reativado.`
+      : `Reativar o estabelecimento "${est.name}"?\n\nUsuarios e gestores vinculados voltarao a ter acesso ao sistema.`;
+    if (!window.confirm(message)) return;
     setTogglingId(est.id);
     try {
       if (est.is_active) {
@@ -125,8 +163,17 @@ export default function AdminEstablishmentsPage() {
     }
   };
 
-  const inputClass =
-    'w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-yellow-500 focus:outline-none';
+  const inputBase =
+    'w-full bg-zinc-950 border rounded-lg px-3 py-2 text-white text-sm focus:outline-none';
+  const inputClass = `${inputBase} border-zinc-700 focus:border-yellow-500`;
+  const inputClassFor = (field: keyof CreateForm) =>
+    fieldErrors[field]
+      ? `${inputBase} border-red-500 focus:border-red-400`
+      : inputClass;
+  const renderFieldError = (field: keyof CreateForm) =>
+    fieldErrors[field] ? (
+      <p className="text-red-400 text-xs mt-1">{fieldErrors[field]}</p>
+    ) : null;
 
   return (
     <div className="p-6 space-y-6">
@@ -142,78 +189,107 @@ export default function AdminEstablishmentsPage() {
             <p className="text-xs uppercase tracking-wider text-zinc-500 font-medium mb-4">
               Novo Estabelecimento
             </p>
-            <form onSubmit={handleCreate} className="space-y-3">
+            <form onSubmit={handleCreate} className="space-y-3" noValidate>
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Nome da Quadra *</label>
                 <input
                   type="text"
-                  className={inputClass}
+                  className={inputClassFor('name')}
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="Ex: Arena Pelada FC"
                 />
+                {renderFieldError('name')}
               </div>
               <div>
-                <label className="block text-sm text-zinc-400 mb-1">Responsavel</label>
+                <label className="block text-sm text-zinc-400 mb-1">Slug (opcional)</label>
                 <input
                   type="text"
-                  className={inputClass}
+                  className={inputClassFor('slug')}
+                  value={form.slug}
+                  onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase() })}
+                  placeholder="Gerado automaticamente do nome se vazio"
+                />
+                {renderFieldError('slug')}
+              </div>
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Responsavel *</label>
+                <input
+                  type="text"
+                  className={inputClassFor('owner_name')}
                   value={form.owner_name}
                   onChange={(e) => setForm({ ...form, owner_name: e.target.value })}
                   placeholder="Nome do responsavel"
                 />
+                {renderFieldError('owner_name')}
               </div>
               <div>
-                <label className="block text-sm text-zinc-400 mb-1">Telefone</label>
+                <label className="block text-sm text-zinc-400 mb-1">Telefone *</label>
                 <input
                   type="text"
-                  className={inputClass}
+                  className={inputClassFor('contact_phone')}
                   value={form.contact_phone}
                   onChange={(e) => setForm({ ...form, contact_phone: e.target.value })}
                   placeholder="(00) 00000-0000"
                 />
+                {renderFieldError('contact_phone')}
               </div>
               <div>
-                <label className="block text-sm text-zinc-400 mb-1">Email</label>
+                <label className="block text-sm text-zinc-400 mb-1">Email *</label>
                 <input
                   type="email"
-                  className={inputClass}
+                  className={inputClassFor('contact_email')}
                   value={form.contact_email}
                   onChange={(e) => setForm({ ...form, contact_email: e.target.value })}
                   placeholder="contato@quadra.com"
                 />
+                {renderFieldError('contact_email')}
+              </div>
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Plano</label>
+                <input
+                  type="text"
+                  className={inputClassFor('plan_name')}
+                  value={form.plan_name}
+                  onChange={(e) => setForm({ ...form, plan_name: e.target.value })}
+                  placeholder="Ex: Basico, Pro, Enterprise"
+                />
+                {renderFieldError('plan_name')}
               </div>
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">IP Permitido</label>
                 <input
                   type="text"
-                  className={inputClass}
+                  className={inputClassFor('allowed_ip')}
                   value={form.allowed_ip}
                   onChange={(e) => setForm({ ...form, allowed_ip: e.target.value })}
                   placeholder="Ex: 192.168.0.1"
                 />
+                {renderFieldError('allowed_ip')}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-zinc-400 mb-1">Estado</label>
                   <input
                     type="text"
-                    className={inputClass}
+                    className={inputClassFor('state')}
                     value={form.state}
                     onChange={(e) => setForm({ ...form, state: e.target.value })}
                     placeholder="UF"
                     maxLength={2}
                   />
+                  {renderFieldError('state')}
                 </div>
                 <div>
                   <label className="block text-sm text-zinc-400 mb-1">Cidade</label>
                   <input
                     type="text"
-                    className={inputClass}
+                    className={inputClassFor('city')}
                     value={form.city}
                     onChange={(e) => setForm({ ...form, city: e.target.value })}
                     placeholder="Cidade"
                   />
+                  {renderFieldError('city')}
                 </div>
               </div>
 
@@ -293,7 +369,7 @@ export default function AdminEstablishmentsPage() {
                       {data.items.map((est) => (
                         <tr key={est.id} className="hover:bg-zinc-800/50">
                           <td className="p-3 text-white font-medium">{est.name}</td>
-                          <td className="p-3 text-zinc-300">{(est as Record<string, unknown>).owner_name as string || '—'}</td>
+                          <td className="p-3 text-zinc-300">{est.owner_name || '—'}</td>
                           <td className="p-3 text-zinc-300">{est.contact_email || '—'}</td>
                           <td className="p-3">
                             {est.is_active ? (
