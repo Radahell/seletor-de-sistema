@@ -45,6 +45,45 @@ JWT_SECRET = os.getenv("JWT_SECRET", "")
 if not JWT_SECRET or len(JWT_SECRET) < 32:
     raise RuntimeError("JWT_SECRET ausente ou < 32 chars. Defina em produção.")
 
+
+# ------------------------------------------------------------
+# SENTRY (opcional — set SENTRY_DSN no .env pra ativar).
+# Sem DSN: skip silencioso (sem erro, sem warning). FlaskIntegration captura
+# exceções não-tratadas automaticamente; before_send remove campos sensíveis.
+# ------------------------------------------------------------
+def _sentry_scrub(event, hint):
+    """Remove campos sensíveis (token, password, etc.) antes de enviar pro Sentry."""
+    try:
+        req = event.get("request", {})
+        headers = req.get("headers", {})
+        for k in list(headers.keys()):
+            if k.lower() in ("authorization", "cookie", "x-session-token", "x-idempotency-key"):
+                headers[k] = "[REDACTED]"
+        data = req.get("data", {})
+        if isinstance(data, dict):
+            for k in list(data.keys()):
+                if "password" in k.lower() or "token" in k.lower() or "secret" in k.lower():
+                    data[k] = "[REDACTED]"
+    except Exception:
+        pass
+    return event
+
+
+if os.getenv("SENTRY_DSN"):
+    import sentry_sdk
+    from sentry_sdk.integrations.flask import FlaskIntegration
+
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN"),
+        integrations=[FlaskIntegration()],
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE", "0.1")),
+        environment=os.getenv("ENVIRONMENT", "production"),
+        release=os.getenv("APP_VERSION", "unknown"),
+        send_default_pii=False,
+        before_send=lambda event, hint: _sentry_scrub(event, hint),
+    )
+
+
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
 
