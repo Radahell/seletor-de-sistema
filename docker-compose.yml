@@ -61,10 +61,12 @@ services:
       - ./backend/uploads:/uploads
       - ./backend:/app
       - ./frontend/dist:/app/frontend/dist
-      # Volume nomeado, sem ${}: o Coolify recusa qualquer substituicao de
-      # variavel na origem de um volume ("shell metacharacters are not allowed").
-      # A pasta do host nem existia — este caminho nunca teve conteudo.
-      - downloads_data:/downloads
+      # Pasta do host, de proposito. O volume nomeado que estava aqui foi
+      # escrito para o Coolify, que recusa ${} na origem de um volume — e o
+      # Coolify foi abandonado para estes sistemas. Com volume nomeado os APKs
+      # somem do site: o publicar-apk.sh grava na pasta do host, e o container
+      # passaria a ler outro lugar, vazio.
+      - ${DOWNLOADS_HOST_PATH:-${HOME}/seletor-de-sistema/downloads}:${DOWNLOADS_DIR:-/downloads}
     command: >
       gunicorn -w 2 -k gthread --threads 8 --timeout 60 --keep-alive 5
       -b 0.0.0.0:${SELETOR_API_PORT:-22012} "app.main:app"
@@ -103,7 +105,6 @@ services:
 
 volumes:
   db_data:
-  downloads_data:
 
 networks:
   seletor-net:
